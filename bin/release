@@ -1,0 +1,58 @@
+#!/usr/bin/env php
+<?php // bin/release — combine changelog.d fragments into CHANGELOG.md and tag.
+// Usage: bin/release <version> [--dry-run]   (version like 0.5.1; the human decides it)
+$version = $argv[1] ?? '';
+$dry = in_array('--dry-run', $argv, true);
+if (!preg_match('/^\d+\.\d+\.\d+$/', $version)) {
+    fwrite(STDERR, "usage: bin/release <x.y.z> [--dry-run]\n"); exit(1);
+}
+$tag = "v{$version}";
+$root = dirname(__DIR__);
+exec('git -C ' . escapeshellarg($root) . ' status --porcelain', $dirty, $code);
+if ($code !== 0) { fwrite(STDERR, "git status failed\n"); exit(1); }
+if ($dirty !== []) { fwrite(STDERR, "working tree is dirty; commit or stash first\n"); exit(1); }
+exec('git -C ' . escapeshellarg($root) . " tag -l " . escapeshellarg($tag), $exists);
+if ($exists !== []) { fwrite(STDERR, "tag {$tag} already exists\n"); exit(1); }
+$fragDir = $root . '/changelog.d';
+$frags = is_dir($fragDir) ? array_filter(scandir($fragDir), fn($f) => str_ends_with($f, '.md')) : [];
+if ($frags === []) { fwrite(STDERR, "no changelog.d/*.md fragments; nothing to release\n"); exit(1); }
+sort($frags);
+$byType = [];
+$consumed = 0;
+foreach ($frags as $f) {
+    $line = trim((string) file_get_contents($fragDir . '/' . $f));
+    if ($line === '') continue;
+    // fragment format: "Added: ..." | "Changed: ..." | "Fixed: ..." | "Security: ..." | "Deprecated: ..." | "Removed: ..."
+    [$type, $text] = array_pad(explode(':', $line, 2), 2, '');
+    $type = trim($type); $text = trim($text);
+    if ($text === '' || !in_array($type, ['Added', 'Changed', 'Fixed', 'Security', 'Deprecated', 'Removed'], true)) {
+        fwrite(STDERR, "fragment {$f} must start with one of Added/Changed/Fixed/Security/Deprecated/Removed: \n"); exit(1);
+    }
+    $byType[$type][] = "- {$text}";
+    $consumed++;
+}
+$section = "## [{$version}] - " . date('Y-m-d') . "\n";
+foreach (['Security', 'Added', 'Changed', 'Deprecated', 'Removed', 'Fixed'] as $type) {
+    if (isset($byType[$type])) $section .= "\n### {$type}\n" . implode("\n", $byType[$type]) . "\n";
+}
+$log = $root . '/CHANGELOG.md';
+$current = is_file($log) ? (string) file_get_contents($log) : "# Changelog\n";
+$needle = "## [Unreleased]";
+$unreleased = str_contains($current, $needle)
+    ? str_replace($needle, $needle . "\n\n" . rtrim($section), $current)
+    : preg_replace('/^(# Changelog\n)/', "$1\n" . $needle . "\n\n" . rtrim($section) . "\n", $current, 1);
+if ($unreleased === null || $unreleased === $current) {
+    fwrite(STDERR, "could not place the section under Unreleased; check CHANGELOG.md shape\n"); exit(1);
+}
+echo "=== {$tag} ===\n" . $section . "\n(fragments consumed: {$consumed})\n";
+if ($dry) { echo "dry run: nothing written\n"; exit(0); }
+file_put_contents($log, $unreleased);
+foreach ($frags as $f) {
+    if (!unlink($fragDir . '/' . $f)) { fwrite(STDERR, "could not delete fragment {$f}\n"); exit(1); }
+}
+chdir($root);
+exec('git add CHANGELOG.md changelog.d', $o1, $c1);
+exec('git commit -m ' . escapeshellarg("chore: release {$tag}") . ' --allow-empty', $o2, $c2);
+exec('git tag -a ' . escapeshellarg($tag) . ' -m ' . escapeshellarg("Release {$tag}"), $o3, $c3);
+if ($c1 || $c2 || $c3) { fwrite(STDERR, "git steps failed; inspect state before retrying\n"); exit(1); }
+echo "tagged {$tag}. Review the notes above, then: git push origin main --tags (owner gate)\n";
