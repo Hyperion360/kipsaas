@@ -17,14 +17,15 @@ final class Slug
     public static function normalize(string $raw): string
     {
         $s = strtolower(trim($raw));
-        // Spaces fold to dashes; every other character outside [a-z0-9-]
-        // rejects the input outright. Malformed shapes are never laundered
-        // into valid ones: '-bad' must not become 'bad', 'a/b' must not
-        // become 'a-b'.
-        if (preg_match('/[^a-z0-9\s-]/', $s)) {
-            throw new \DomainException('slug may contain only letters, digits, dashes, and spaces');
+        // Path and encoding material rejects outright: a raw dash at either
+        // end, or a slash, dot, percent, or backslash anywhere. '-bad' must
+        // not become 'bad', 'a/b' must not become 'a-b', '%2e%2e' must not
+        // decode into anything. Other punctuation folds into dashes and the
+        // folded edge dashes trim away ('Acme Archive!' -> 'acme-archive').
+        if ($s === '' || $s[0] === '-' || str_ends_with($s, '-') || preg_match('#[./%\\\\]#', $s)) {
+            throw new \DomainException('slug must be 3-63 characters: letters, digits, dashes');
         }
-        $s = (string) preg_replace('/\s+/', '-', $s);
+        $s = trim((string) preg_replace('/[^a-z0-9]+/', '-', $s), '-');
         if (!preg_match('/^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$/', $s) || strlen($s) < 3 || strlen($s) > 63) {
             throw new \DomainException('slug must be 3-63 characters: letters, digits, dashes');
         }
