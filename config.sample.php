@@ -9,6 +9,7 @@ return [
     'token_secret' => getenv('SAAS_TOKEN_SECRET') ?: '', // REQUIRED in prod; the front controller refuses to boot without it
     'mail' => ['transport' => 'log', 'log_path' => __DIR__ . '/data/mail.log', 'from' => 'noreply@saas.example.test'],
     'tenant_smtp' => null, // copied into every tenant config: ['host' => '', 'port' => 587, 'username' => '', 'password' => '', 'from' => '']
+    'tenant_app' => null, // REQUIRED before provisioning: your KipSaaS\TenantAppInterface implementation, e.g. new \App\DemoApp()
     'plans' => [
         'standard' => ['price_id' => 'price_REPLACE_ME', 'label' => 'Standard', 'amount_month' => 900, 'storage_gb' => 2, 'powered_by' => true],
         'pro' => ['price_id' => 'price_REPLACE_ME', 'label' => 'Pro', 'amount_month' => 1900, 'storage_gb' => 10, 'powered_by' => false],
