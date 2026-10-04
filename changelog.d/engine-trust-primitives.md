@@ -1,0 +1,1 @@
+Added: engine trust primitives ported from the reviewed engine under KipSaaS: Slug (stricter than the plan draft: malformed input rejects instead of laundering), Tokens, RateLimit, Plans, the StripeHttp seam, StripeClient, and StripeWebhook signature verification
