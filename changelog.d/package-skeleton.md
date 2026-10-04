@@ -1,0 +1,1 @@
+Added: package skeleton: composer package hyperion360/kipsaas (MIT, kip/framework dependency, PHPUnit 11), committed agent-context files (AGENTS.md, CLAUDE.md), config sample with SAAS_* env names, and the changelog-fragment release script
