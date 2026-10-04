@@ -1,0 +1,9 @@
+body { font-family: Georgia, serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+header { border-bottom: 1px solid #ccc; margin-bottom: 1.5rem; }
+footer { border-top: 1px solid #ccc; margin-top: 2rem; padding-top: .5rem; }
+.plans { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+.plans th, .plans td { border: 1px solid #ccc; padding: .4rem .6rem; text-align: left; }
+label { display: block; margin: .75rem 0; }
+input, select { display: block; margin-top: .25rem; width: 100%; max-width: 22rem; }
+button { margin-top: 1rem; padding: .5rem 1rem; }
+.error { color: #8b0000; }
