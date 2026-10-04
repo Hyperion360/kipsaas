@@ -7,6 +7,9 @@ return [
     'base_domain' => getenv('SAAS_BASE_DOMAIN') ?: 'saas.example.test', // tenant host = {slug}.{base_domain}
     'control_base_url' => getenv('SAAS_CONTROL_URL') ?: 'https://control.saas.example.test',
     'token_secret' => getenv('SAAS_TOKEN_SECRET') ?: '', // REQUIRED in prod; the front controller refuses to boot without it
+    'lang' => 'en', // lang/<code>.php carries every control-page string; drop in your own pack
+    'brand_name' => 'KipSaaS', // shown in the control pages' header and title
+    'brand_url' => '/start', // where the brand links
     'mail' => ['transport' => 'log', 'log_path' => __DIR__ . '/data/mail.log', 'from' => 'noreply@saas.example.test'],
     'tenant_smtp' => null, // copied into every tenant config: ['host' => '', 'port' => 587, 'username' => '', 'password' => '', 'from' => '']
     'tenant_app' => null, // REQUIRED before provisioning: your KipSaaS\TenantAppInterface implementation, e.g. new \App\DemoApp()
