@@ -1,0 +1,139 @@
+#!/usr/bin/env php
+<?php // bin/saas
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+$configPath = getenv('SAAS_CONFIG') ?: __DIR__ . '/../config.php';
+if (!is_file($configPath)) {
+    fwrite(STDERR, "saas: no config at {$configPath} (copy config.sample.php to config.php)\n");
+    exit(1);
+}
+$config = require $configPath;
+$root = dirname(__DIR__);
+
+$tenants = null;
+$repo = function () use (&$tenants, $config): KipSaaS\Tenants {
+    return $tenants ??= new KipSaaS\Tenants((new KipSaaS\Registry($config['registry_dsn']))->pdo());
+};
+$app = function () use ($config): KipSaaS\TenantAppInterface {
+    $app = $config['tenant_app'] ?? null;
+    if (!$app instanceof KipSaaS\TenantAppInterface) {
+        fwrite(STDERR, "saas: config tenant_app must implement KipSaaS\TenantAppInterface\n");
+        exit(1);
+    }
+    return $app;
+};
+$provisioner = function () use ($config, $app): KipSaaS\ReferenceProvisioner {
+    return new KipSaaS\ReferenceProvisioner($config, function (string $to, string $subject, string $body) use ($config): void {
+        (new Kip\Mailer($config['mail']))->send($to, $subject, $body);
+    }, $app());
+};
+$maps = fn(): KipSaaS\MapGen => new KipSaaS\MapGen($repo(), $config['nginx']);
+
+$usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|doctor|version]\n";
+$command = $argv[1] ?? '';
+match ($command) {
+    'map:write' => $maps()->publish(),
+    'tenants:list' => (function () use ($repo): void {
+        printf("%-4s %-24s %-10s %-28s %s %s\n", 'id', 'slug', 'status', 'host', 'plan', 'map');
+        $rows = $repo()->hostToSlug(); // presence in the map is the operational truth
+        foreach ($repo()->all() as $t) {
+            $routed = isset($rows[$t['host']]) ? 'routed' : '-';
+            printf("%-4d %-24s %-10s %-28s %s %s\n", $t['id'], $t['slug'], $t['status'], $t['host'], $t['plan'], $routed);
+        }
+    })(),
+    // Manual-invoice onboarding (the sell-first revenue path): record the
+    // tenant as active after payment has been received OUTSIDE Stripe.
+    'tenant:create' => (function () use ($repo, $config, $argv): void {
+        [$slug, $plan, $email, $title] = [$argv[2] ?? '', $argv[3] ?? '', $argv[4] ?? '', $argv[5] ?? ''];
+        if ($slug === '' || $email === '') {
+            fwrite(STDERR, "saas: usage: saas tenant:create <slug> <plan> <email> <title>\n");
+            exit(1);
+        }
+        $normalized = KipSaaS\Slug::normalize($slug);
+        if (!isset($config['plans'][$plan])) {
+            fwrite(STDERR, "saas: unknown plan {$plan}\n");
+            exit(1);
+        }
+        if ($repo()->bySlug($normalized) !== null) {
+            fwrite(STDERR, "saas: slug {$normalized} already exists\n");
+            exit(1);
+        }
+        $id = $repo()->create($normalized, KipSaaS\Slug::hostFor($normalized, $config['base_domain']),
+            $plan, strtolower($email), $title !== '' ? $title : $normalized, '', '');
+        $repo()->setStatus($id, 'verified'); // manual payment: skip email verification
+        $repo()->setStatus($id, 'active');   // and skip Stripe activation
+        echo "tenant {$normalized} recorded as active (paid manually). Next: saas provision:tenant {$normalized}\n";
+    })(),
+    'provision:tenant' => (function () use ($repo, $provisioner, $maps, $argv): void {
+        $key = $argv[2] ?? '';
+        $t = ctype_digit($key) ? $repo()->byId((int) $key) : $repo()->bySlug($key);
+        if ($t === null) {
+            fwrite(STDERR, "saas: no tenant '{$key}'\n");
+            exit(1);
+        }
+        if ($t['status'] !== 'active') {
+            fwrite(STDERR, "saas: tenant {$t['slug']} is {$t['status']}, not active (record payment with tenant:create first)\n");
+            exit(1);
+        }
+        $result = $provisioner()->provision($t);
+        $maps()->publish();
+        echo "provisioned {$t['slug']} at https://{$t['host']}\n";
+        if (!$result['mail_sent']) {
+            echo "SMTP is not configured for tenants, so no welcome mail was sent.\n";
+            echo "One-time password for {$t['owner_email']}: {$result['one_time_password']}\n";
+            echo "Hand it to the owner over a trusted channel; they change it after first login.\n";
+        }
+    })(),
+    'purge:due' => (function () use ($repo, $provisioner, $maps, $config): void {
+        $now = gmdate('Y-m-d\TH:i:s\Z');
+        $changed = false;
+        foreach ($repo()->dueForSuspension($now) as $t) {
+            $provisioner()->suspend($t);
+            $repo()->setStatus((int) $t['id'], 'suspended',
+                ['purge_after' => gmdate('Y-m-d\TH:i:s\Z', time() + 86400 * (int) ($config['retention_days'] ?? 30))]);
+            echo "suspended {$t['slug']}\n";
+            $changed = true;
+        }
+        foreach ($repo()->dueForPurge($now) as $t) {
+            $provisioner()->purge($t);
+            $repo()->setStatus((int) $t['id'], 'closed');
+            echo "purged {$t['slug']}\n";
+            $changed = true;
+        }
+        if ($changed) {
+            // Routing must follow the state change in the SAME run, or a
+            // grace-expired tenant keeps serving until the next cron sweep.
+            $maps()->publish();
+        }
+    })(),
+    'doctor' => (function () use ($config, $root): void {
+        $fail = 0;
+        $check = function (string $label, bool $ok, string $detail = '') use (&$fail): void {
+            echo ($ok ? 'ok' : 'FAIL') . "  {$label}" . ($detail !== '' ? "  ({$detail})" : '') . "\n";
+            if (!$ok) $fail++;
+        };
+        try {
+            new KipSaaS\Registry($config['registry_dsn']);
+            $check('registry reachable', true);
+        } catch (\Throwable $e) {
+            $check('registry reachable', false, $e->getMessage());
+        }
+        $check('code_source present', is_dir((string) ($config['code_source'] ?? '')), (string) ($config['code_source'] ?? ''));
+        $mapFile = (string) ($config['nginx']['map_file'] ?? '');
+        $check('map path writable', $mapFile !== '' && (is_writable($mapFile) || is_writable(dirname($mapFile))), $mapFile);
+        $check('webhook secret set', ($config['env'] ?? 'prod') !== 'prod' || (string) ($config['stripe_webhook_secret'] ?? '') !== '');
+        echo 'kipsaas ' . KipSaaS\Version::kipsaas($root) . "\n";
+        echo 'kip/framework ' . (KipSaaS\Version::lockedRef($root . '/composer.lock', 'kip/framework') ?? 'unknown') . "\n";
+        if ($fail > 0) exit(1);
+    })(),
+    'version' => (function () use ($root): void {
+        echo 'kipsaas ' . KipSaaS\Version::kipsaas($root) . "\n";
+        echo 'kip/framework ' . (KipSaaS\Version::lockedRef($root . '/composer.lock', 'kip/framework') ?? 'unknown') . "\n";
+    })(),
+    default => (function () use ($usage): void {
+        fwrite(STDERR, $usage);
+        exit(1);
+    })(),
+};
