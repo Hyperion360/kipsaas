@@ -1,27 +1,21 @@
 #!/usr/bin/env php
 <?php // bin/release - combine changelog.d fragments into CHANGELOG.md and tag.
 // Usage: bin/release <version> [--dry-run]   (version like 0.5.1; the human decides it)
-function fail(string $msg): never
-{
-    fwrite(STDERR, $msg);
-    exit(1);
-}
-
 $version = $argv[1] ?? '';
 $dry = in_array('--dry-run', $argv, true);
 if (!preg_match('/^\d+\.\d+\.\d+$/', $version)) {
-    fail("usage: bin/release <x.y.z> [--dry-run]\n");
+    fwrite(STDERR, "usage: bin/release <x.y.z> [--dry-run]\n"); exit(1);
 }
 $tag = "v{$version}";
 $root = dirname(__DIR__);
 exec('git -C ' . escapeshellarg($root) . ' status --porcelain', $dirty, $code);
-if ($code !== 0) fail("git status failed\n");
-if ($dirty !== []) fail("working tree is dirty; commit or stash first\n");
+if ($code !== 0) { fwrite(STDERR, "git status failed\n"); exit(1); }
+if ($dirty !== []) { fwrite(STDERR, "working tree is dirty; commit or stash first\n"); exit(1); }
 exec('git -C ' . escapeshellarg($root) . " tag -l " . escapeshellarg($tag), $exists);
-if ($exists !== []) fail("tag {$tag} already exists\n");
+if ($exists !== []) { fwrite(STDERR, "tag {$tag} already exists\n"); exit(1); }
 $fragDir = $root . '/changelog.d';
 $frags = is_dir($fragDir) ? array_filter(scandir($fragDir), fn($f) => str_ends_with($f, '.md')) : [];
-if ($frags === []) fail("no changelog.d/*.md fragments; nothing to release\n");
+if ($frags === []) { fwrite(STDERR, "no changelog.d/*.md fragments; nothing to release\n"); exit(1); }
 sort($frags);
 $byType = [];
 $consumed = 0;
@@ -36,18 +30,8 @@ $ingest = function (string $line, string $origin) use (&$byType): void {
 foreach ($frags as $f) {
     $line = trim((string) file_get_contents($fragDir . '/' . $f));
     if ($line === '') continue;
-    if (str_contains($line, "\n")) fail("fragment {$f} must be exactly one line\n");
     // fragment format: "Added: ..." | "Changed: ..." | "Fixed: ..." | "Security: ..." | "Deprecated: ..." | "Removed: ..."
-<<<<<<< HEAD
-    [$type, $text] = array_pad(explode(':', $line, 2), 2, '');
-    $type = trim($type); $text = trim($text);
-    if ($text === '' || !in_array($type, ['Added', 'Changed', 'Fixed', 'Security', 'Deprecated', 'Removed'], true)) {
-        fail("fragment {$f} must start with one of Added/Changed/Fixed/Security/Deprecated/Removed: \n");
-    }
-    $byType[$type][] = "- {$text}";
-=======
     $ingest($line, "fragment {$f}");
->>>>>>> wt/release-script
     $consumed++;
 }
 $log = $root . '/CHANGELOG.md';
@@ -76,22 +60,17 @@ $unreleased = str_contains($current, $needle)
     ? preg_replace('/' . preg_quote($needle, '/') . '/', $needle . "\n\n" . rtrim($section), $current, 1)
     : preg_replace('/^(# Changelog\n)/', "$1\n" . $needle . "\n\n" . rtrim($section) . "\n", $current, 1);
 if ($unreleased === null || $unreleased === $current) {
-    fail("could not place the section under Unreleased; check CHANGELOG.md shape\n");
+    fwrite(STDERR, "could not place the section under Unreleased; check CHANGELOG.md shape\n"); exit(1);
 }
 echo "=== {$tag} ===\n" . $section . "\n(fragments consumed: {$consumed})\n";
 if ($dry) { echo "dry run: nothing written\n"; exit(0); }
 file_put_contents($log, $unreleased);
 foreach ($frags as $f) {
-    if (!unlink($fragDir . '/' . $f)) fail("could not delete fragment {$f}\n");
+    if (!unlink($fragDir . '/' . $f)) { fwrite(STDERR, "could not delete fragment {$f}\n"); exit(1); }
 }
 chdir($root);
 // Staged, checked steps (a failed add must never cascade into an empty commit + orphan tag):
 exec('git add CHANGELOG.md changelog.d', $o1, $c1);
-<<<<<<< HEAD
-exec('git commit -m ' . escapeshellarg("chore: release {$tag}") . ' --allow-empty', $o2, $c2);
-exec('git tag -a ' . escapeshellarg($tag) . ' -m ' . escapeshellarg("Release {$tag}"), $o3, $c3);
-if ($c1 || $c2 || $c3) fail("git steps failed; inspect state before retrying\n");
-=======
 if ($c1 !== 0) { fwrite(STDERR, "git add failed\n"); exit(1); }
 exec('git commit -m ' . escapeshellarg("chore: release {$tag}"), $o2, $c2); // no --allow-empty: the commit always carries content
 if ($c2 !== 0) { fwrite(STDERR, "git commit failed\n"); exit(1); }
@@ -99,5 +78,4 @@ if ($c2 !== 0) { fwrite(STDERR, "git commit failed\n"); exit(1); }
 // tag message cleanup and git show vN is self-contained (no section line can start with '@').
 exec('git -c core.commentChar=@ tag -a ' . escapeshellarg($tag) . ' -m ' . escapeshellarg("Release {$tag}\n\n" . substr($section, 0, 2000)), $o3, $c3);
 if ($c3 !== 0) { fwrite(STDERR, "git tag failed\n"); exit(1); }
->>>>>>> wt/release-script
 echo "tagged {$tag}. Review the notes above, then: git push origin main --tags (owner gate)\n";
