@@ -50,11 +50,23 @@ final class ControlApp
             session_start();
         }
 
+        // Liveness never depends on the UI: healthz answers before the lang
+        // pack loads, so a broken pack cannot take the probe down with it.
+        if ($path === '/healthz') {
+            header('Content-Type: text/plain');
+            exit('ok');
+        }
+
         // lang_dir points the loader at an operator-owned pack (one file per
         // lang code, same shape as lang/en.php); the basename hop keeps the
         // lang key from escaping the chosen directory.
         $langDir = is_string($config['lang_dir'] ?? null) ? $config['lang_dir'] : dirname(__DIR__) . '/lang';
-        $lang = require $langDir . '/' . basename((string) ($config['lang'] ?? 'en')) . '.php';
+        $langFile = $langDir . '/' . basename((string) ($config['lang'] ?? 'en')) . '.php';
+        $lang = is_file($langFile) ? require $langFile : null;
+        if (!is_array($lang)) {
+            http_response_code(500);
+            exit("saas: no lang pack at {$langFile}\n");
+        }
         $brand = (string) ($config['brand_name'] ?? 'KipSaaS');
         $brandUrl = (string) ($config['brand_url'] ?? '/start');
 
@@ -97,10 +109,6 @@ final class ControlApp
         };
 
         try {
-            if ($path === '/healthz') {
-                header('Content-Type: text/plain');
-                exit('ok');
-            }
             if ($path === '/start' && $method === 'GET') {
                 $view('start.php', ['error' => null, 'title' => $lang['start_heading']]);
             }
@@ -177,6 +185,14 @@ final class ControlApp
             }
             if ($path === '/billing/portal' && $method === 'POST') {
                 Csrf::check($_POST['csrf'] ?? null);
+                // Every claim opens a Stripe portal session per matching row
+                // and sends mail: the public form carries its own bucket so it
+                // cannot be used as a mail-bomb or a Stripe-quota faucet.
+                $clientIp = (string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+                if (!RateLimit::hit($registry->pdo(), 'portal:' . $clientIp, 10, 3600)) {
+                    http_response_code(429);
+                    $view('error.php', ['title' => $lang['rate_limited_heading'], 'message' => $lang['rate_limited_body']]);
+                }
                 $email = (string) ($_POST['email'] ?? '');
                 foreach ($tenants->byEmail($email) as $t) {
                     if (($t['stripe_customer_id'] ?? '') === '') continue;
