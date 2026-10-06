@@ -57,9 +57,11 @@ final class ControlApp
             exit('ok');
         }
 
-        // lang_dir points the loader at an operator-owned pack (one file per
-        // lang code, same shape as lang/en.php); the basename hop keeps the
-        // lang key from escaping the chosen directory.
+        // view_dir/lang_dir point the renderer at the operator's copies
+        // (package mode lifts views/ and lang/ into the app root); absent
+        // both keys resolve to the package's own dirs, which is exactly
+        // the same directory in template mode.
+        $viewDir = is_string($config['view_dir'] ?? null) ? $config['view_dir'] : dirname(__DIR__) . '/views';
         $langDir = is_string($config['lang_dir'] ?? null) ? $config['lang_dir'] : dirname(__DIR__) . '/lang';
         $langFile = $langDir . '/' . basename((string) ($config['lang'] ?? 'en')) . '.php';
         $lang = is_file($langFile) ? require $langFile : null;
@@ -78,11 +80,11 @@ final class ControlApp
         $signup = new Signup($tenants, $config, $mail);
         $stripe = new StripeClient(new StreamStripeHttp((string) $config['stripe_secret']), $config);
 
-        $view = function (string $name, array $vars = []) use ($config, $lang, $brand, $brandUrl): never {
+        $view = function (string $name, array $vars = []) use ($config, $lang, $brand, $brandUrl, $viewDir): never {
             extract($vars, EXTR_SKIP);
             $L = $lang;
             $plans = is_array($config['plans'] ?? null) ? $config['plans'] : [];
-            require dirname(__DIR__) . '/views/layout.php';
+            require $viewDir . '/layout.php';
             exit;
         };
 
