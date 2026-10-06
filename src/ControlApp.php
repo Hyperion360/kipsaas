@@ -120,6 +120,14 @@ final class ControlApp
                 $view('verify.php', ['title' => $lang['verify_heading'], 'token' => (string) ($_GET['t'] ?? '')]);
             }
             if ($path === '/verify/claim' && $method === 'POST') {
+                // The same SMTP gate as the GET interstitial: without tenant
+                // mail the welcome (and its one-time password) cannot arrive,
+                // so a self-serve claim must not start a checkout at all,
+                // even by posting the route directly.
+                if (!is_array($config['tenant_smtp'] ?? null)) {
+                    http_response_code(503);
+                    $view('error.php', ['title' => $lang['smtp_missing_heading'], 'message' => $lang['smtp_missing_body']]);
+                }
                 Csrf::check($_POST['csrf'] ?? null);
                 $out = $signup->claim((string) ($_POST['token'] ?? ''));
                 if ($out['status'] !== 'verified') {

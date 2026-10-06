@@ -158,6 +158,21 @@ PHP);
         $p->provision($this->tenant());
     }
 
+    public function test_smtp_mode_mails_a_one_time_password_that_actually_verifies(): void
+    {
+        // The SMTP path cannot hand the password over out of band (the caller
+        // is a webhook), so the welcome mail must carry it; a mail that only
+        // says "use the password reset" strands owners of apps without a
+        // reset flow (the demo ships none).
+        $this->provisioner()->provision($this->tenant());
+        self::assertCount(1, $this->mails);
+        self::assertMatchesRegularExpression('/One-time sign-in password: (\S+)/', $this->mails[0]['body']);
+        preg_match('/One-time sign-in password: (\S+)/', $this->mails[0]['body'], $m);
+        $pdo = new \PDO('sqlite:' . $this->root . '/tenants/acme/app/data.sqlite', null, null, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $hash = (string) $pdo->query("SELECT password_hash FROM users WHERE email = 'ow@example.test'")->fetchColumn();
+        self::assertTrue(password_verify($m[1], $hash), 'the mailed password must open the owner account');
+    }
+
     public function test_suspend_resume_and_purge_round_trip(): void
     {
         $p = $this->provisioner();
