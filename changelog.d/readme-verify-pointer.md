@@ -1,0 +1,1 @@
+Changed: README's quickstart says outright that signing up stops at /verify with a 503 until tenant_smtp and the Stripe test keys are set, pointing at docs/STRIPE-TESTMODE.md for both, instead of dead-ending after the signup mention

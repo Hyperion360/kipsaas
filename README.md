@@ -125,10 +125,11 @@ webhook-driven provisioning) runs from the control web app:
 php -S 127.0.0.1:8095 -t public
 ```
 
-Open http://127.0.0.1:8095/start. For the full billed walkthrough in
-Stripe TEST mode (test products, webhook forwarding, the 4242 card, and a
-duplicate-event exercise that proves the retry behavior), read
-docs/STRIPE-TESTMODE.md.
+Open http://127.0.0.1:8095/start. Signing up stops at /verify with a 503
+page until `tenant_smtp` and the Stripe test keys are configured. For
+the full billed walkthrough in Stripe TEST mode (test products, webhook
+forwarding, the 4242 card, and a duplicate-event exercise that proves the
+retry behavior), read docs/STRIPE-TESTMODE.md; it covers both settings.
 
 ### Build your app here
 
