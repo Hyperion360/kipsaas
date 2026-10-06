@@ -1,0 +1,1 @@
+Fixed: ControlApp::run() honors a view_dir config key (the control layout directory), so package mode's lifted views/ copy actually renders; lang_dir existed already and both keys are now documented in config.sample.php defaulting to __DIR__-relative paths, which is the package-mode lift location and the same directory as the package default in template mode

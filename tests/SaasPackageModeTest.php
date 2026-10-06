@@ -141,6 +141,29 @@ PHP);
         self::assertFileExists($this->app . '/data/registry.sqlite', 'the registry must land in the app root the config names');
     }
 
+    public function test_lifted_views_and_lang_are_read_when_view_dir_and_lang_dir_point_at_them(): void
+    {
+        // The lift copies views/ and lang/ into the app root for branding;
+        // run() resolved views at the package root regardless, so the lifted
+        // copies were dead weight. Pointing view_dir/lang_dir at the app's
+        // copies must render the override, and the package defaults must
+        // not leak through.
+        $this->lift($this->kit . '/views', $this->app . '/views');
+        $layout = (string) file_get_contents($this->app . '/views/layout.php');
+        file_put_contents($this->app . '/views/layout.php', str_replace('<footer>', '<footer data-lifted="1">', $layout));
+        $this->lift($this->kit . '/lang', $this->app . '/lang');
+        $pack = (string) file_get_contents($this->app . '/lang/en.php');
+        file_put_contents($this->app . '/lang/en.php', str_replace("'start_heading' => 'Start your site',", "'start_heading' => 'Start your colony',", $pack));
+        $this->writeAppConfig("    'view_dir' => __DIR__ . '/views',\n    'lang' => 'en',\n    'lang_dir' => __DIR__ . '/lang',\n");
+        $this->bootAppServer(8088);
+
+        [$status, $body] = $this->http(8088, 'GET', '/start');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('data-lifted="1"', $body, 'the lifted layout must render, not the package copy');
+        self::assertStringContainsString('Start your colony', $body);
+        self::assertStringNotContainsString('Start your site', $body);
+    }
+
     private function rmTree(string $dir): void
     {
         if (!is_dir($dir)) return;
