@@ -56,5 +56,20 @@ final class Registry
             hits INTEGER NOT NULL,
             window_start INTEGER NOT NULL
         )');
+        // Index shapes matched to the repositories' real WHERE clauses. All
+        // partial: each serves exactly one lookup family, stays small, and
+        // never indexes the NULL dead weight the other rows carry. IF NOT
+        // EXISTS so an existing registry converges on the next open.
+        $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_tenants_verify_token ON tenants (verify_token_hash)
+            WHERE verify_token_hash IS NOT NULL');
+        $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_tenants_owner_email ON tenants (owner_email)
+            WHERE status != 'closed'");
+        $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_tenants_subscription ON tenants (stripe_subscription_id)
+            WHERE stripe_subscription_id IS NOT NULL');
+        $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_tenants_due_suspension ON tenants (grace_until)
+            WHERE status = 'past_due' AND grace_until IS NOT NULL");
+        $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_tenants_due_purge ON tenants (purge_after)
+            WHERE status = 'suspended' AND purge_after IS NOT NULL");
+        $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants (status, host, slug)');
     }
 }

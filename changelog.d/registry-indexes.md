@@ -1,0 +1,1 @@
+Added: partial registry indexes for the token, email, subscription, and dunning sweep lookups plus the map queries, with an EXPLAIN QUERY PLAN test that fails any future full scan or temp b-tree; existing registries converge via CREATE INDEX IF NOT EXISTS on next open.
