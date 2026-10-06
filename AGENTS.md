@@ -35,12 +35,14 @@ of the product: agent context files are a feature of this repository.
 ## Porting rule (leak guard)
 
 The engine was ported from a private, reviewed source. Nothing under
-`src/`, `tests/`, `bin/`, `demo/`, `public/`, `views/`, `lang/`, or `config.sample.php` may
-carry that provenance: no `Cloud\` namespaces, no `CLOUD_` env prefixes,
-no `cloud:` log prefixes, no private repo names, private default paths, or
-private domains. The guard must return nothing:
+`src/`, `tests/`, `bin/`, `demo/`, `public/`, `views/`, `lang/`,
+`config.sample.php`, `docs/`, or the root AI-context files may carry that
+provenance: no private namespaces, env prefixes, log prefixes, repo
+names, default paths, or example domains. The guard must return nothing
+(the bracketed character classes keep the pattern from matching its own
+documentation, here and in the README):
 
-    grep -rEi 'Cloud\\|CLOUD_|cloud:|kiption-cloud|cloud\.example\.test' src/ tests/ bin/ demo/ public/ views/ lang/ config.sample.php
+    grep -rEi 'Clo[u]d\\|CLO[U]D_|clo[u]d:|kiption-clou[d]|clou[d]\.example\.test' src/ tests/ bin/ demo/ public/ views/ lang/ config.sample.php docs/ AGENTS.md CLAUDE.md README.md
 
 ## Test commands
 

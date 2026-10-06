@@ -329,10 +329,12 @@ PATH="/opt/homebrew/bin:$PATH" vendor/bin/phpunit
 ```
 
 The suite covers the engine and the control web app over the built-in
-server. The leak guard must stay empty:
+server. The leak guard must stay empty (the bracketed character classes
+keep the pattern from matching its own documentation, here and in
+AGENTS.md):
 
 ```
-grep -rEi 'Cloud\\|CLOUD_|cloud:|kiption-cloud|cloud\.example\.test' src/ tests/ bin/ demo/ public/ views/ lang/ config.sample.php
+grep -rEi 'Clo[u]d\\|CLO[U]D_|clo[u]d:|kiption-clou[d]|clou[d]\.example\.test' src/ tests/ bin/ demo/ public/ views/ lang/ config.sample.php docs/ AGENTS.md CLAUDE.md README.md
 ```
 
 Releases: every task lands one `changelog.d/<slug>.md` fragment;
