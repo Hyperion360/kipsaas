@@ -65,14 +65,14 @@ PHP);
         file_put_contents($dir . '/config.php', "<?php\nreturn ['site_name' => 'Source', 'rate_limit' => ['auth' => ['max' => 10, 'window' => 60]], 'features' => ['news' => true]];\n");
     }
 
-    private function provisioner(): ReferenceProvisioner
+    private function provisioner(?string $codeSource = null, ?array $plans = null): ReferenceProvisioner
     {
         $config = [
             'tenants_root' => $this->root . '/tenants',
-            'code_source' => $this->code,
+            'code_source' => $codeSource ?? $this->code,
             'base_domain' => 'saas.example.test',
             'tenant_smtp' => ['host' => 'smtp.test', 'port' => 587, 'username' => 'u', 'password' => 'p', 'from' => 'sites@saas.example.test'],
-            'plans' => ['standard' => ['powered_by' => true], 'pro' => ['powered_by' => false]],
+            'plans' => $plans ?? ['standard' => ['powered_by' => true], 'pro' => ['powered_by' => false]],
         ];
         return new ReferenceProvisioner($config, function (string $to, string $s, string $b): void {
             $this->mails[] = ['to' => $to, 'subject' => $s, 'body' => $b];
@@ -189,6 +189,89 @@ PHP);
         }
         // Nothing half-built may survive: the tenant dir is gone so a retry starts clean.
         self::assertFileDoesNotExist($this->root . '/tenants/acme');
+    }
+
+    public function test_symlinked_vendor_dirs_stamp_as_real_files_and_the_tenant_autoloads(): void
+    {
+        // The dev-checkout shape: a composer path repo makes
+        // vendor/kip/framework a SYMLINK to a framework clone. The stamp must
+        // dereference it into real files (a copied link would point outside
+        // the tenant) and skip the clone's nested .git wherever it sits.
+        $framework = $this->root . '/framework-clone';
+        mkdir($framework . '/src', 0777, true);
+        file_put_contents($framework . '/src/App.php', "<?php\nnamespace Kip;\nfinal class App {}\n");
+        mkdir($framework . '/.git', 0777, true);
+        file_put_contents($framework . '/.git/HEAD', 'ref: refs/heads/main');
+        symlink($framework, $framework . '/loop'); // a pathological link cycle must not hang the copy
+
+        $code = $this->root . '/vendoredcode';
+        $this->makeFakeInstall($code);
+        mkdir($code . '/vendor/kip', 0777, true);
+        symlink($framework, $code . '/vendor/kip/framework');
+        // A real (non-link) nested package carrying its own VCS state: the
+        // per-segment excludes must catch this one too, at any depth.
+        mkdir($code . '/vendor/other/pkg/.git', 0777, true);
+        file_put_contents($code . '/vendor/other/pkg/lib.php', "<?php\n");
+        file_put_contents($code . '/vendor/other/pkg/.git/HEAD', 'ref: refs/heads/main');
+        file_put_contents($code . '/vendor/autoload.php', "<?php require __DIR__ . '/kip/framework/src/App.php';\n");
+        file_put_contents($code . '/bin/kip', <<<'PHP'
+#!/usr/bin/env php
+<?php
+require __DIR__ . '/../vendor/autoload.php';
+if (($argv[1] ?? '') === 'migrate') {
+    $pdo = new PDO('sqlite:' . dirname(__DIR__) . '/app/data.sqlite', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo->exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL, penname TEXT, role TEXT, is_admin INTEGER, email_verified_at TEXT, approved_at TEXT)');
+}
+exit(class_exists('Kip\App') ? 0 : 1); // every invocation proves the stamped vendor loads Kip classes
+PHP);
+        chmod($code . '/bin/kip', 0755);
+
+        $this->provisioner(codeSource: $code)->provision($this->tenant());
+        $dir = $this->root . '/tenants/acme';
+        $fw = $dir . '/vendor/kip/framework';
+        self::assertFileExists($fw . '/src/App.php');
+        self::assertNotTrue(is_link($fw), 'the stamped vendor must be a real directory, not a copied link');
+        self::assertNotTrue(is_link($fw . '/src/App.php'));
+        self::assertFileExists($dir . '/vendor/autoload.php');
+        self::assertFileDoesNotExist($fw . '/.git');   // nested VCS state never stamps
+        self::assertFileDoesNotExist($fw . '/loop');   // a cycle link is not followed
+        self::assertFileExists($dir . '/vendor/other/pkg/lib.php'); // real nested packages still copy
+        self::assertFileDoesNotExist($dir . '/vendor/other/pkg/.git');
+        foreach ($this->findDirsNamed($dir, '.git') as $stray) self::assertFileDoesNotExist($stray);
+
+        // The tenant's own kip CLI must autoload the framework from the stamp.
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($dir . '/bin/kip') . ' migrate 2>&1', $out, $codeOut);
+        self::assertSame(0, $codeOut, implode("\n", $out));
+    }
+
+    public function test_every_non_price_plan_flag_crosses_into_the_rendered_config(): void
+    {
+        $plans = [
+            'standard' => ['price_id' => 'price_1', 'label' => 'Standard', 'amount_month' => 900,
+                'storage_gb' => 2, 'powered_by' => true, 'note_cap' => 10],
+            'pro' => ['price_id' => 'price_2', 'label' => 'Pro', 'amount_month' => 1900,
+                'storage_gb' => 10, 'powered_by' => false, 'note_cap' => 100],
+        ];
+        $this->provisioner(plans: $plans)->provision($this->tenant());
+        $cfg = require $this->root . '/tenants/acme/config.php';
+        self::assertSame(['label' => 'Standard', 'storage_gb' => 2, 'note_cap' => 10], $cfg['plan_flags']);
+
+        $this->provisioner(plans: $plans)->provision($this->tenant(slug: 'procorp', plan: 'pro'));
+        $cfg = require $this->root . '/tenants/procorp/config.php';
+        self::assertSame(['label' => 'Pro', 'storage_gb' => 10, 'note_cap' => 100], $cfg['plan_flags']);
+        self::assertFalse($cfg['powered_by']); // the billing-side flag stays where it was
+    }
+
+    private function findDirsNamed(string $dir, string $name): array
+    {
+        $found = [];
+        $ri = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST);
+        foreach ($ri as $item) {
+            if ($item->isDir() && $item->getFilename() === $name) $found[] = (string) $item->getPathname();
+        }
+        return $found;
     }
 
     private function rmTree(string $dir): void
