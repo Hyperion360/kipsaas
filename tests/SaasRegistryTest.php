@@ -77,4 +77,32 @@ final class SaasRegistryTest extends TestCase
         $this->tenants->create('beta', 'beta.saas.example.test', 'pro', 'b@example.test', 'Beta', 'h', '2026-01-01T00:00:00Z');
         self::assertSame(['acme', 'beta'], array_column($this->tenants->all(), 'slug'));
     }
+
+    public function test_lookup_and_due_queries_hit_indexes_not_full_scans(): void
+    {
+        // The db-optimize standard as a test: every WHERE the repositories
+        // issue must be served by an index shape; a registry that grows to
+        // real size must not turn claim lookups or cron sweeps into scans.
+        $id = $this->tenant();
+        $this->tenants->setStatus($id, 'verified');
+        $this->tenants->setStatus($id, 'active');
+        $this->tenants->update($id, ['stripe_subscription_id' => 'sub_1']);
+        $this->tenants->setStatus($id, 'past_due', ['grace_until' => '2026-02-01T00:00:00Z']);
+        $queries = [
+            'token lookup (signup claim)' => ['SELECT * FROM tenants WHERE verify_token_hash = ?', ['x']],
+            'email lookup (billing portal)' => ["SELECT * FROM tenants WHERE owner_email = ? AND status != 'closed' ORDER BY id", ['x']],
+            'subscription lookup (webhooks)' => ['SELECT * FROM tenants WHERE stripe_subscription_id = ?', ['x']],
+            'due-for-suspension sweep' => ["SELECT * FROM tenants WHERE status = 'past_due' AND grace_until IS NOT NULL AND grace_until < ?", ['2026-01-01T00:00:00Z']],
+            'due-for-purge sweep' => ["SELECT * FROM tenants WHERE status = 'suspended' AND purge_after IS NOT NULL AND purge_after < ?", ['2026-01-01T00:00:00Z']],
+            'routed-hosts map query' => ["SELECT host, slug FROM tenants WHERE status IN ('active', 'past_due')", []],
+            'suspended-hosts map query' => ['SELECT host FROM tenants WHERE status = ? ORDER BY host', ['suspended']],
+        ];
+        foreach ($queries as $label => [$sql, $params]) {
+            $q = $this->tenants->pdo()->prepare('EXPLAIN QUERY PLAN ' . $sql);
+            $q->execute($params);
+            $plan = strtolower((string) json_encode($q->fetchAll(\PDO::FETCH_ASSOC)));
+            self::assertStringNotContainsString('scan tenants', $plan, "{$label} must use an index, not a full scan");
+            self::assertStringNotContainsString('temp b-tree', $plan, "{$label} must not sort through a temp b-tree");
+        }
+    }
 }
