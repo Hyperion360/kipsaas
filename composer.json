@@ -5,7 +5,7 @@
   "repositories": [{ "type": "vcs", "url": "https://github.com/Hyperion360/kip" }],
   "require": { "php": ">=8.3", "kip/framework": "^0.5@dev" },
   "require-dev": { "phpunit/phpunit": "^11" },
-  "autoload": { "psr-4": { "KipSaaS\\": "src/" }, "classmap": ["src/"] },
+  "autoload": { "psr-4": { "KipSaaS\\": "src/", "KipSaaS\\Demo\\": "demo/src/Demo/" }, "classmap": ["src/"] },
   "autoload-dev": { "psr-4": { "KipSaaS\\Tests\\": "tests/" } },
   "minimum-stability": "dev",
   "prefer-stable": true,

@@ -1,0 +1,95 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "8e3a35482337e66a9ac2cc728d74a12a",
+    "packages": [
+        {
+            "name": "kip/framework",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Hyperion360/kip.git",
+                "reference": "ee20f6b0f0b612e2574c98986f5d99023859eaa8"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Hyperion360/kip/zipball/ee20f6b0f0b612e2574c98986f5d99023859eaa8",
+                "reference": "ee20f6b0f0b612e2574c98986f5d99023859eaa8",
+                "shasum": ""
+            },
+            "require": {
+                "ext-pdo": "*",
+                "php": ">=8.3"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^2.2",
+                "phpunit/phpunit": "^11"
+            },
+            "default-branch": true,
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-main": "0.5.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Kip\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Kip\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "check-docs": [
+                    "@php scripts/check-docs.php"
+                ],
+                "lint": [
+                    "@php vendor/bin/phpstan analyse --no-progress --memory-limit=256M"
+                ],
+                "test": [
+                    "@php vendor/bin/phpunit"
+                ],
+                "check": [
+                    "@lint",
+                    "@check-docs",
+                    "@test"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Danilo Stern-Sapad",
+                    "homepage": "https://hyperion360.com/"
+                }
+            ],
+            "description": "Kip: the batteries-included, zero-dependency, server-rendered PHP framework",
+            "support": {
+                "issues": "https://github.com/Hyperion360/kip/issues",
+                "source": "https://github.com/Hyperion360/kip"
+            },
+            "time": "2026-10-05T16:13:03+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "dev",
+    "stability-flags": {
+        "kip/framework": 20
+    },
+    "prefer-stable": true,
+    "prefer-lowest": false,
+    "platform": {
+        "php": ">=8.3",
+        "ext-pdo_sqlite": "*"
+    },
+    "platform-dev": {},
+    "plugin-api-version": "2.6.0"
+}

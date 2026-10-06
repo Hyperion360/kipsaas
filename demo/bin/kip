@@ -1,0 +1,31 @@
+#!/usr/bin/env php
+<?php // demo/bin/kip
+declare(strict_types=1);
+
+// The demo's whole CLI surface: the provisioner runs exactly these two
+// commands against a stamped tenant (migrate, then the seedCommand the
+// DemoApp adapter declares). The framework ships no bin/kip of its own, so
+// every install carries one.
+require dirname(__DIR__) . '/vendor/autoload.php';
+$config = require dirname(__DIR__) . '/config.php';
+$root = dirname(__DIR__);
+
+match ($argv[1] ?? 'help') {
+    'migrate' => (function () use ($config, $root): void {
+        $ran = (new Kip\Migrations\Migrator(new Kip\Database($config['db']['dsn']), $root . '/migrations'))->migrate();
+        echo $ran ? 'Ran: ' . implode(', ', $ran) . "\n" : "Nothing to migrate.\n";
+    })(),
+    // Starter nav (app/nav.json) and public/robots.txt: both are COPY_EXCLUDES
+    // entries, so a stamp arrives without them and the seed writes fresh ones
+    // per tenant.
+    'db:seed-demo' => (function () use ($config, $root): void {
+        $nav = [['label' => 'Notes', 'url' => '/notes']];
+        file_put_contents((string) $config['nav_file'], json_encode($nav, JSON_UNESCAPED_SLASHES) . "\n");
+        file_put_contents($root . '/public/robots.txt', "User-agent: *\nDisallow: /auth\n");
+        echo "Seeded starter nav (app/nav.json) and public/robots.txt.\n";
+    })(),
+    default => (function (): void {
+        fwrite(STDERR, "Usage: kip [migrate|db:seed-demo]\n");
+        exit(1);
+    })(),
+};
