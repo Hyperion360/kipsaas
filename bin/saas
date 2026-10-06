@@ -83,7 +83,7 @@ match ($command) {
         if (!$result['mail_sent']) {
             echo "SMTP is not configured for tenants, so no welcome mail was sent.\n";
             echo "One-time password for {$t['owner_email']}: {$result['one_time_password']}\n";
-            echo "Hand it to the owner over a trusted channel; they change it after first login.\n";
+            echo "Hand it to the owner over a trusted channel; it stays the password until your app offers a change or reset flow.\n";
         }
     })(),
     'purge:due' => (function () use ($repo, $provisioner, $maps, $config): void {
