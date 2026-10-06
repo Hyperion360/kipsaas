@@ -148,6 +148,31 @@ final class Tenants
         $this->pdo->prepare('DELETE FROM events WHERE stripe_event_id = ?')->execute([$eventId]);
     }
 
+    /**
+     * Registry hygiene: event rows past their audit window and rate-limit rows
+     * whose window started before the cutoff are dead weight that only ever
+     * grows. The cutoffs are the caller's policy (bin/saas prune: 90 days and
+     * 1 day); this is the DELETE half. Returns the rows removed.
+     */
+    public function prune(string $eventsBefore, int $rateLimitsBefore): int
+    {
+        $q = $this->pdo->prepare('DELETE FROM events WHERE created_at < ?');
+        $q->execute([$eventsBefore]);
+        $n = $q->rowCount();
+        $q = $this->pdo->prepare('DELETE FROM rate_limits WHERE window_start < ?');
+        $q->execute([$rateLimitsBefore]);
+        return $n + $q->rowCount();
+    }
+
+    /** What prune() would delete right now under the same cutoffs; doctor's prunable-rows line. */
+    public function prunable(string $eventsBefore, int $rateLimitsBefore): int
+    {
+        $q = $this->pdo->prepare('SELECT (SELECT COUNT(*) FROM events WHERE created_at < ?)
+            + (SELECT COUNT(*) FROM rate_limits WHERE window_start < ?)');
+        $q->execute([$eventsBefore, $rateLimitsBefore]);
+        return (int) $q->fetchColumn();
+    }
+
     public function bySubscription(string $subscriptionId): ?array
     {
         return $this->one('stripe_subscription_id', $subscriptionId);

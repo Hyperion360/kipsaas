@@ -291,6 +291,10 @@ decision, not a default):
 # when it changes anything)
 0 5 * * * saas SAAS_CONFIG=/srv/saas/control/config.php php /srv/saas/control/bin/saas purge:due
 
+# Registry hygiene: drop webhook event rows past their 90-day audit window
+# and rate-limit rows outside their fixed window, weekly Sunday 05:10
+10 5 * * 0 saas SAAS_CONFIG=/srv/saas/control/config.php php /srv/saas/control/bin/saas prune
+
 # Nightly offsite backup, 04:00 (section 7)
 0 4 * * * saas bash /srv/saas/control/server/offsite-backup.sh
 ```

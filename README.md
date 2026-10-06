@@ -287,8 +287,9 @@ The KipSaaS engine (`src/`, namespace `KipSaaS\`):
   published (tmp + rename), content-idempotent (no write, no reload when
   unchanged), `nginx -t` gates every reload.
 - `bin/saas`: `tenants:list`, `tenant:create` (manual invoicing, no
-  Stripe needed), `provision:tenant`, `map:write`, `purge:due`,
-  `doctor`, `version`.
+  Stripe needed), `provision:tenant`, `map:write`, `purge:due`, `prune`
+  (drops webhook events past 90 days and rate-limit rows past their
+  window), `doctor`, `version`.
 - Control web app: `/start` (pricing table from the catalog + signup),
   `/start/pending`, `/verify` + `/verify/claim`, `/webhooks/stripe`,
   `/billing/return`, `/billing/portal` (portal link by email),

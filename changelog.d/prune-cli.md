@@ -1,0 +1,1 @@
+Added: saas prune (deletes webhook event rows past their 90-day audit window and rate-limit rows whose window started more than a day ago), a prunable-rows line in doctor output, and the weekly prune line in DEPLOY.md's cron set.
