@@ -1,0 +1,1 @@
+Fixed: a missing or non-array lang pack is a clean 500 instead of an uncatchable require fatal (healthz stays up), and the public billing-portal form is rate limited (10 per hour per IP) so it cannot be used as a mail-bomb or Stripe-quota faucet.

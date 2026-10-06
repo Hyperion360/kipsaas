@@ -328,6 +328,41 @@ PHP);
         self::assertTrue($seen, 'the start page must set a session cookie');
     }
 
+    public function test_a_missing_lang_pack_is_a_clean_500(): void
+    {
+        // A typo'd lang code used to hit an uncatchable require fatal; it
+        // must be a plain 500 like any other boot failure. healthz stays up:
+        // liveness does not depend on the UI pack.
+        $dir = $this->scratch();
+        mkdir($dir . '/data', 0777, true);
+        mkdir($dir . '/tenants', 0777, true);
+        $this->writeConfig($dir, "    'lang' => 'zz',\n");
+        $this->bootServer(8091, $dir . '/config.php');
+
+        [$status, $body] = $this->http(8091, 'GET', '/start');
+        self::assertSame(500, $status);
+        self::assertStringContainsString('saas: no lang pack', $body);
+        [$status] = $this->http(8091, 'GET', '/healthz');
+        self::assertSame(200, $status);
+    }
+
+    public function test_portal_requests_are_rate_limited_per_ip(): void
+    {
+        // Each portal POST sends real mail and opens Stripe portal sessions
+        // for every matching row: an unthrottled form is a mail-bomb and a
+        // Stripe-quota faucet.
+        [$status, $body] = $this->http(8097, 'GET', '/start');
+        preg_match('/name="csrf" value="([0-9a-f]{64})"/', $body, $m);
+        $csrf = $m[1];
+        for ($i = 0; $i < 10; $i++) {
+            [$status] = $this->http(8097, 'POST', '/billing/portal', ['csrf' => $csrf, 'email' => 'nobody@example.test']);
+            self::assertSame(200, $status);
+        }
+        [$status, $body] = $this->http(8097, 'POST', '/billing/portal', ['csrf' => $csrf, 'email' => 'nobody@example.test']);
+        self::assertSame(429, $status);
+        self::assertStringContainsString('Too many', $body);
+    }
+
     public function test_signature_helper_agrees_with_the_engine(): void
     {
         // sanity for the smoke's own signing: the engine accepts what we minted

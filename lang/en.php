@@ -35,5 +35,7 @@ return [
     'not_found_body' => 'Nothing lives at that address.',
     'error_heading' => 'Something broke',
     'error_body' => 'We hit an error and logged it. Try again in a moment.',
+    'rate_limited_heading' => 'Too many requests',
+    'rate_limited_body' => 'Too many attempts from your address; try again in a while.',
     'footer_start' => 'Start your own site',
 ];
