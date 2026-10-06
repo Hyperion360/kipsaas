@@ -1,0 +1,1 @@
+Changed: README's package-mode quickstart adds the missing mkdir -p data step and says to set token_secret before the first page serves, and notes that the lifted views/ and lang/ are read through config.sample.php's view_dir/lang_dir defaults

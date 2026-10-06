@@ -200,17 +200,23 @@ self-contained, and yours to brand):
 
 ```
 composer install
-cp -R vendor/hyperion360/kipsaas/public public
-cp -R vendor/hyperion360/kipsaas/views views
-cp -R vendor/hyperion360/kipsaas/lang lang
-mkdir -p bin && cp vendor/hyperion360/kipsaas/bin/saas bin/saas && chmod +x bin/saas
-cp vendor/hyperion360/kipsaas/config.sample.php config.php
+cp -R vendor/hyper360/kipsaas/public public
+cp -R vendor/hyper360/kipsaas/views views
+cp -R vendor/hyper360/kipsaas/lang lang
+mkdir -p bin && cp vendor/hyper360/kipsaas/bin/saas bin/saas && chmod +x bin/saas
+cp vendor/hyper360/kipsaas/config.sample.php config.php
+mkdir -p data
 ```
 
 No edits are needed for the copies to run: `public/index.php` and
 `bin/saas` resolve the autoloader, `views/`, `lang/`, and `config.php`
 relative to your app root (`dirname(__DIR__)` from `public/` and `bin/`),
-which is exactly where you just put them. You will edit `views/` and
+which is exactly where you just put them; the lifted `views/` and `lang/`
+are read through config.sample.php's `view_dir`/`lang_dir` defaults, which
+point at your app root. One edit is needed before the first page serves:
+set `token_secret` in `config.php` (any long random string in dev, 32+
+bytes; the front controller refuses to boot without it). `data/` holds
+the registry and the log-transport mail. You will edit `views/` and
 `lang/en.php` for branding (every UI string lives in the lang pack), and
 `config.php` for real values. `composer update` afterwards updates the
 engine under your copies; your copies are yours.
