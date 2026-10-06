@@ -1,1 +1,0 @@
-Changed: rendered tenant configs get trusted_proxy from the new tenant_trusted_proxy config key (default false) instead of an unconditional true, so bare-nginx deploys do not hand tenant visitors a spoofable X-Forwarded-For past per-IP throttles.

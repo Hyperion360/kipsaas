@@ -1,1 +1,0 @@
-Fixed: webhook state transitions now run the provisioner side effect BEFORE the registry status flip, so Stripe's retry after a failed provision/suspend/resume re-enters the whole transition instead of acking a half-applied row (paid-but-never-provisioned tenant).

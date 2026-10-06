@@ -1,1 +1,0 @@
-Changed: README's framework-constraint note now states the current truth (kip/framework ^0.5.0 against the public v0.5.0 tag; the VCS stanza is the temporary part pre-Packagist), and the package-mode quickstart sample and resolution bullets no longer say ^0.5@dev awaiting a tag
