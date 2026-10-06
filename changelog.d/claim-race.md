@@ -1,0 +1,1 @@
+Fixed: the claim is a single compare-and-swap (pending to verified, one winner), so a double-submitted verify link can no longer open two Stripe checkout sessions; a replayed link now gets a clean 303 to /start/pending instead of a 403, and the Stripe HTTP transport is bindable in config for tests.

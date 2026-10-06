@@ -4,10 +4,12 @@ declare(strict_types=1);
 namespace KipSaaS;
 
 /**
- * Single-use verification tokens. Only the HMAC of the full token is stored
+ * Single-use verification tokens. Only the sha256 of the full token is stored
  * (a registry leak cannot mint links), the signature is constant-time
  * compared, and expiry rides the stored row. Single use comes from the flow:
- * claiming flips the tenant status and clears verify_token_hash.
+ * claiming atomically flips the tenant status (a compare-and-swap that admits
+ * one winner) and keeps the spent hash on the row so a replayed link resolves
+ * to "already claimed" instead of "unknown token".
  */
 final class Tokens
 {
