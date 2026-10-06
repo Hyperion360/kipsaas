@@ -34,7 +34,7 @@ final class Version
             if (str_starts_with($v, 'dev-') && is_string($ref) && $ref !== '') {
                 return $v . '@' . substr($ref, 0, 12);
             }
-            return $v; // a tag pin: the version IS the tag
+            return ltrim($v, 'v'); // a tag pin, normalized bare: v0.5.0 and 0.5.0 render identically
         }
         return null;
     }
