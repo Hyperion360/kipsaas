@@ -94,8 +94,13 @@ final class WebhookHandler
             'stripe_customer_id' => isset($o['customer']) ? (string) $o['customer'] : null,
             'stripe_subscription_id' => isset($o['subscription']) ? (string) $o['subscription'] : null,
         ]);
-        $this->tenants->setStatus($tenantId, 'active');
+        // The status flip comes AFTER the provisioner: side effects first,
+        // commit last. A provision that throws leaves the row 'verified', so
+        // Stripe's retry re-runs the whole transition; the reverse order
+        // would strand an 'active' row whose directory was never stamped,
+        // acked 'ok' on the retry because the guard above fired.
         $this->provisioner->provision($this->tenants->byId($tenantId)); // throws on failure -> claim rolls back
+        $this->tenants->setStatus($tenantId, 'active');
         $this->publishMapsSafe();
     }
 
@@ -107,9 +112,11 @@ final class WebhookHandler
             // Paying again inside the retention window restores service; after
             // purge_after the data is gone and this is a no-op (the purge path closes the row).
             if ($t['purge_after'] !== null && $t['purge_after'] < gmdate('Y-m-d\TH:i:s\Z')) return;
+            // Lock removal before the flip: a failed resume leaves the row
+            // suspended so the retry re-enters this branch and redoes it.
+            $this->provisioner->resume($this->tenants->byId($tenantId));
             $this->tenants->setStatus($tenantId, 'active');
             $this->tenants->update($tenantId, ['purge_after' => null, 'grace_until' => null]);
-            $this->provisioner->resume($this->tenants->byId($tenantId));
             $this->publishMapsSafe();
             return;
         }
@@ -133,8 +140,11 @@ final class WebhookHandler
         if ($t === null) return;
         $purge = gmdate('Y-m-d\TH:i:s\Z', time() + 86400 * (int) $this->config['retention_days']);
         if (in_array($t['status'], ['active', 'past_due'], true)) {
-            $this->tenants->setStatus($tenantId, 'suspended', ['purge_after' => $purge]);
+            // The lock write comes before the flip: a suspension whose lock
+            // failed must stay 'active' so the retry redoes the transition;
+            // a flipped row with no lock would keep serving traffic forever.
             $this->provisioner->suspend($t);
+            $this->tenants->setStatus($tenantId, 'suspended', ['purge_after' => $purge]);
             $this->publishMapsSafe();
         }
     }

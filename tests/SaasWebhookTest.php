@@ -100,10 +100,69 @@ final class SaasWebhookTest extends TestCase
         } catch (\RuntimeException) {
             $this->addToAssertionCount(1);
         }
+        // The failed run must NOT have flipped the row active: activation is
+        // the LAST step, so the retry re-enters the whole transition.
+        self::assertSame('verified', $this->tenants->byId($this->tenantId)['status']);
         // The retry (fresh handler, working provisioner) must reprocess the SAME event id.
-        (new WebhookHandler($this->tenants, new RecordingProvisioner(), ['grace_days' => 7, 'retention_days' => 30], fn() => null))->handle($e);
+        $recovery = new RecordingProvisioner();
+        (new WebhookHandler($this->tenants, $recovery, ['grace_days' => 7, 'retention_days' => 30], fn() => null))->handle($e);
         $t = $this->tenants->byId($this->tenantId);
         self::assertSame('active', $t['status']);
+        self::assertSame(['provision', 'acme'], $recovery->calls[0] ?? null, 'the retry must provision, not just flip the row');
+    }
+
+    public function test_redelivery_after_a_failed_suspend_writes_the_lock_and_flips_the_row(): void
+    {
+        // Cancellation writes the suspension lock BEFORE the status flip, so
+        // a lock failure leaves the row active and Stripe's retry redoes the
+        // whole transition. The reverse order would strand the row suspended
+        // with no lock file, serving traffic forever after a "successful" ack.
+        $this->handler()->handle($this->event('checkout.session.completed',
+            ['client_reference_id' => (string) $this->tenantId, 'customer' => 'cus_9', 'subscription' => 'sub_3'], 'evt_a'));
+        $failingSuspend = new class implements ProvisionerInterface {
+            public function provision(array $tenant): array { return ['mail_sent' => true, 'one_time_password' => null]; }
+            public function resume(array $tenant): void {}
+            public function suspend(array $tenant): void { throw new \RuntimeException('lock write failed'); }
+            public function purge(array $tenant): void {}
+        };
+        $e = $this->event('customer.subscription.deleted', ['id' => 'sub_3'], 'evt_b');
+        try {
+            (new WebhookHandler($this->tenants, $failingSuspend, ['grace_days' => 7, 'retention_days' => 30], fn() => null))->handle($e);
+            self::fail('expected the suspend failure to surface');
+        } catch (\RuntimeException) {
+            $this->addToAssertionCount(1);
+        }
+        self::assertSame('active', $this->tenants->byId($this->tenantId)['status'], 'a failed lock write must not suspend the row');
+        $recovery = new RecordingProvisioner();
+        (new WebhookHandler($this->tenants, $recovery, ['grace_days' => 7, 'retention_days' => 30], fn() => null))->handle($e);
+        self::assertSame('suspended', $this->tenants->byId($this->tenantId)['status']);
+        self::assertContains('suspend', array_column($recovery->calls, 0), 'the retry must write the lock, not just flip the row');
+    }
+
+    public function test_redelivery_after_a_failed_resume_reenters_the_transition(): void
+    {
+        $this->handler()->handle($this->event('checkout.session.completed',
+            ['client_reference_id' => (string) $this->tenantId, 'subscription' => 'sub_3'], 'evt_a'));
+        $this->handler()->handle($this->event('customer.subscription.deleted', ['id' => 'sub_3'], 'evt_b'));
+        $failingResume = new class implements ProvisionerInterface {
+            public function provision(array $tenant): array { return ['mail_sent' => true, 'one_time_password' => null]; }
+            public function resume(array $tenant): void { throw new \RuntimeException('lock removal failed'); }
+            public function suspend(array $tenant): void {}
+            public function purge(array $tenant): void {}
+        };
+        $e = $this->event('invoice.paid', ['subscription' => 'sub_3'], 'evt_c');
+        try {
+            (new WebhookHandler($this->tenants, $failingResume, ['grace_days' => 7, 'retention_days' => 30], fn() => null))->handle($e);
+            self::fail('expected the resume failure to surface');
+        } catch (\RuntimeException) {
+            $this->addToAssertionCount(1);
+        }
+        self::assertSame('suspended', $this->tenants->byId($this->tenantId)['status'], 'a failed lock removal must keep the row suspended for the retry');
+        $recovery = new RecordingProvisioner();
+        (new WebhookHandler($this->tenants, $recovery, ['grace_days' => 7, 'retention_days' => 30], fn() => null))->handle($e);
+        self::assertSame('active', $this->tenants->byId($this->tenantId)['status']);
+        self::assertNull($this->tenants->byId($this->tenantId)['purge_after']);
+        self::assertContains('resume', array_column($recovery->calls, 0), 'the retry must remove the lock, not just flip the row');
     }
 
     public function test_unknown_tenant_event_is_acknowledged_not_retried_forever(): void
