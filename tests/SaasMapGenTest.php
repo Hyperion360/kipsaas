@@ -53,4 +53,39 @@ final class SaasMapGenTest extends TestCase
         self::assertSame($mtime, filemtime($file));
         @unlink($file);
     }
+
+    public function test_a_failed_nginx_t_restores_the_previous_map_and_throws(): void
+    {
+        // The reload gate: when nginx -t rejects the freshly published map,
+        // the live config must stay loadable. The old bytes are kept in
+        // memory before the rename, so a failing check puts them back.
+        $file = sys_get_temp_dir() . '/map-' . bin2hex(random_bytes(4)) . '.conf';
+        $previous = "map \$http_host \$tenant_root {\n    default /previous;\n}\n";
+        file_put_contents($file, $previous);
+        $bin = sys_get_temp_dir() . '/mapbin-' . bin2hex(random_bytes(4));
+        mkdir($bin);
+        file_put_contents($bin . '/nginx', "#!/bin/sh\necho 'nginx: [emerg] map is broken' >&2\nexit 1\n");
+        chmod($bin . '/nginx', 0755);
+        $oldPath = getenv('PATH');
+        putenv('PATH=' . $bin . ':' . $oldPath); // exec() inherits PATH: the fixture nginx fails the check
+        try {
+            $gen = new MapGen($this->tenants, ['tenants_root' => '/srv/t', 'empty_root' => '/srv/e',
+                'control_public_root' => '/srv/c', 'control_host' => 'control.saas.example.test',
+                'map_file' => $file, 'reload' => true]);
+            $thrown = null;
+            try {
+                $gen->publish();
+            } catch (\RuntimeException $e) {
+                $thrown = $e;
+            }
+            self::assertNotNull($thrown, 'a failing nginx -t must throw');
+            self::assertStringContainsString('nginx -t failed', $thrown->getMessage());
+            self::assertSame($previous, (string) file_get_contents($file), 'the previous map must be back on disk');
+            self::assertFileDoesNotExist($file . '.tmp' . getmypid());
+        } finally {
+            putenv('PATH=' . $oldPath);
+            @unlink($file);
+            @rmdir($bin);
+        }
+    }
 }

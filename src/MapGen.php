@@ -46,14 +46,33 @@ final class MapGen
         if (is_file($file) && (string) file_get_contents($file) === $content) {
             return; // idempotent: cron map:write runs every 10 minutes; skip the write and the reload when nothing changed
         }
+        // The old bytes ride in memory through the swap: if the reload gate
+        // rejects the new map, they go back on disk, so the live nginx
+        // config never keeps pointing at a file nginx cannot load.
+        $previous = is_file($file) ? (string) file_get_contents($file) : null;
         $tmp = $file . '.tmp' . getmypid();
         file_put_contents($tmp, $content);
         rename($tmp, $file); // atomic: nginx never reads a half-written map
         if (!empty($this->config['reload'])) {
             exec('nginx -t 2>&1', $out, $code);
-            if ($code !== 0) throw new \RuntimeException('nginx -t failed after map write: ' . implode("\n", $out));
+            if ($code !== 0) {
+                $this->restore($file, $previous);
+                throw new \RuntimeException('nginx -t failed after map write (previous map restored): ' . implode("\n", $out));
+            }
             exec('systemctl reload nginx 2>&1', $out2, $code2);
             if ($code2 !== 0) throw new \RuntimeException('nginx reload failed: ' . implode("\n", $out2));
         }
+    }
+
+    /** Put the previous map back, atomically; null previous means there was no map before this write. */
+    private function restore(string $file, ?string $previous): void
+    {
+        if ($previous === null) {
+            @unlink($file);
+            return;
+        }
+        $tmp = $file . '.tmp' . getmypid();
+        file_put_contents($tmp, $previous);
+        rename($tmp, $file);
     }
 }
