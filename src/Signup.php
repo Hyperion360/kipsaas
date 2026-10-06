@@ -18,12 +18,11 @@ final class Signup
     public function submit(string $email, string $rawTitle, string $plan, string $ip): array
     {
         $email = strtolower(trim($email));
-        // Two buckets: the client IP (a trusted proxy's real-client header,
-        // falling back to REMOTE_ADDR) and the email itself, so a spoofed
-        // header cannot burn another IP's bucket and one shared IP cannot
-        // lock everyone out of signup.
-        if (!RateLimit::hit($this->registryPdo(), 'signup:' . $ip, 10, 3600)
-            || !RateLimit::hit($this->registryPdo(), 'signupemail:' . $email, 5, 3600)) {
+        // The IP bucket is first and unconditional: pure abuse control, hit
+        // before any work. The per-email bucket comes AFTER input validation:
+        // garbage submits must not be able to lock a real address out of
+        // signup, so only a well-formed request burns it.
+        if (!RateLimit::hit($this->registryPdo(), 'signup:' . $ip, 10, 3600)) {
             return ['status' => 'rate_limited', 'error' => 'Too many signups; try again later.'];
         }
         if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
@@ -38,6 +37,9 @@ final class Signup
         // offers it, so a value naming one is as wrong as an unknown key.
         if (!isset($this->config['plans'][$plan]['price_id']) || $this->config['plans'][$plan]['price_id'] === '') {
             return ['status' => 'error', 'error' => 'Pick a plan.'];
+        }
+        if (!RateLimit::hit($this->registryPdo(), 'signupemail:' . $email, 5, 3600)) {
+            return ['status' => 'rate_limited', 'error' => 'Too many signups; try again later.'];
         }
         if ($this->tenants->bySlug($slug) !== null) {
             return ['status' => 'error', 'error' => 'That name is taken.'];
