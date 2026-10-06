@@ -1,1 +1,0 @@
-Fixed: the control app no longer starts a session on /healthz or /webhooks/stripe (no session file or Set-Cookie per machine request), and the session cookie's Secure flag now follows the configured control_base_url scheme, which nginx's stock fastcgi_params never signals otherwise.

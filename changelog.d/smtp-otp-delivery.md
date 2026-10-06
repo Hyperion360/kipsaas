@@ -1,1 +1,0 @@
-Fixed: SMTP-mode provisioning now mails the one-time sign-in password in the welcome mail, and /verify/claim carries the same no-SMTP 503 gate as the interstitial, so no self-serve path can end at a tenant whose owner password nobody knows.

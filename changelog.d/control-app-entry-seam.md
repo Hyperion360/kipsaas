@@ -1,1 +1,0 @@
-Added: KipSaaS\ControlApp entry seam so embedding repos run the control web app over their own config (boot() keeps the SAAS_CONFIG front door, run() takes the config array; public/index.php is a two-call wrapper), a lang_dir config key pointing the string loader at an operator-owned pack, and manual-only plans (empty price_id) hidden from the pricing page and refused at signup

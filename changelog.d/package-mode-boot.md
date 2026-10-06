@@ -1,1 +1,0 @@
-Fixed: package-mode boot: public/index.php now passes the app-root config.php to ControlApp::boot() (SAAS_CONFIG still wins when set); with no argument boot() resolved config at the vendored package directory, so a lifted app ran on the package checkout's own config instead of its own

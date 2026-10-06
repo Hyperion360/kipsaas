@@ -1,1 +1,0 @@
-Fixed: the stamp aborts and rolls back when copy() or mkdir() fails (permissions, disk full) instead of finishing a tenant with files missing, and suspend/resume/purge revalidate the slug through Slug::normalize before building any path, closing the same defence-in-depth provision() already had.
