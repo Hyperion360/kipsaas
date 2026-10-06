@@ -368,9 +368,9 @@ once, in this order:
 - An unknown host, `curl -sI https://nope.<domain>/`, returns the empty
   root's static page, not a tenant, not a 5xx (the map default works).
 - `sudo -u saas SAAS_CONFIG=... php bin/saas doctor` prints ok on all
-  four checks (registry, code_source, map path, webhook secret) and both
-  version lines (kipsaas, kip/framework lock refs; put them in your
-  go-live note).
+  five checks (registry, control host free, code_source, map path,
+  webhook secret) and both version lines (kipsaas, kip/framework lock
+  refs; put them in your go-live note).
 - Provision one test tenant through the manual path
   (`tenant:create` + `provision:tenant`), then
   `curl -s https://<slug>.<domain>/` serves it.
