@@ -101,22 +101,48 @@ final class ReferenceProvisioner implements ProvisionerInterface
 
     private function copySkeleton(string $source, string $dest): void
     {
-        $ri = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($source, \FilesystemIterator::SKIP_DOTS),
+        if (!is_dir($dest)) mkdir($dest, 0775, true); // iterator order is undefined; a root-level file must never race the first mkdir
+        $this->copyTree($source, $dest, '', []);
+    }
+
+    /**
+     * A symlinked directory in code_source (composer path-repo vendors in a
+     * dev checkout, e.g. vendor/kip/framework -> a framework clone) stamps as
+     * REAL files: copy() never follows directory links, and a copied link
+     * would point outside the tenant, breaking the portability promise and
+     * leaving the package's classes out of the stamp entirely. $seen guards
+     * against a pathological link cycle recursing forever.
+     */
+    private function copyTree(string $srcDir, string $tenantRoot, string $prefix, array $seen): void
+    {
+        $ri = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($srcDir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::SELF_FIRST);
         foreach ($ri as $item) {
-            $rel = substr((string) $item->getPathname(), strlen($source) + 1);
+            $rel = $prefix . substr((string) $item->getPathname(), strlen($srcDir) + 1);
             if ($this->excluded($rel)) continue;
-            $target = $dest . '/' . $rel;
+            $target = $tenantRoot . '/' . $rel;
             if ($item->isDir()) {
-                if (!is_dir($target)) mkdir($target, 0775, true);
+                if ($item->isLink()) {
+                    $real = (string) $item->getRealPath();
+                    if (in_array($real, $seen, true)) continue;
+                    if (!is_dir($target)) mkdir($target, 0775, true);
+                    $this->copyTree($real, $tenantRoot, $rel . '/', [...$seen, $real]);
+                } elseif (!is_dir($target)) {
+                    mkdir($target, 0775, true);
+                }
             } else {
-                copy((string) $item->getPathname(), $target);
+                copy((string) $item->getPathname(), $target); // file links dereference here
             }
         }
     }
 
     private function excluded(string $rel): bool
     {
+        // Nested VCS/tool state (a vendored package's own .git reached through
+        // a symlinked vendor) never belongs in a stamp, wherever it sits.
+        foreach (explode('/', $rel) as $segment) {
+            if (in_array($segment, ['.git', '.gstack', '.claude'], true)) return true;
+        }
         foreach (self::COPY_EXCLUDES as $ex) {
             if ($rel === $ex || str_starts_with($rel, $ex . '/')) return true;
         }
@@ -145,6 +171,13 @@ final class ReferenceProvisioner implements ProvisionerInterface
         $cfg['site_name'] = (string) $tenant['title'];
         $cfg['trusted_proxy'] = true; // a fronting proxy terminates TLS in front of the web server
         $cfg['powered_by'] = Plans::poweredBy($this->config, (string) $tenant['plan']);
+        // Per-plan feature limits (note_cap and friends) cross into the tenant
+        // config under plan_flags: the tenant app enforces its plan's quotas
+        // from here. Billing identity (price_id, amount_month) and the
+        // powered_by flag (already rendered above) never cross.
+        $flags = Plans::get($this->config, (string) $tenant['plan']);
+        unset($flags['price_id'], $flags['amount_month'], $flags['powered_by']);
+        $cfg['plan_flags'] = $flags;
         $smtp = $this->config['tenant_smtp'] ?? null;
         if (is_array($smtp)) {
             $cfg['mail'] = ['transport' => 'smtp', 'host' => $smtp['host'], 'port' => (int) $smtp['port'],
