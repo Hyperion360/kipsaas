@@ -147,8 +147,7 @@ server {
 }
 
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;  # http2 belongs on the listen line: nginx before 1.25.1 (Ubuntu 24.04 ships 1.24) rejects `http2 on;`
     ssl_certificate     /etc/ssl/saas-origin.pem;      # covers *.<domain> + <domain>
     ssl_certificate_key /etc/ssl/saas-origin.key;
 
@@ -160,6 +159,7 @@ server {
     location ~ \.php$ {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $realpath_root/index.php;
+        fastcgi_param HTTPS on;  # stock fastcgi_params never passes HTTPS; PHP apps read it for Secure cookie flags
         fastcgi_read_timeout 60;
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
     }
@@ -262,6 +262,10 @@ Set, at minimum:
 - `tenant_smtp` (the self-serve signup path refuses to run without it,
   and provisioned tenants need working mail) and your Stripe keys when
   you go billed
+- `'tenant_trusted_proxy' => true` ONLY if a TLS-terminating front (a
+  CDN or load balancer) sits in front of nginx AND origin 80/443 is
+  restricted to that front's IP ranges; otherwise leave it false, so
+  tenant apps do not honor client-spoofable X-Forwarded-* headers
 
 Then:
 

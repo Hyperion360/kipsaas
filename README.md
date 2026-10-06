@@ -332,7 +332,7 @@ The suite covers the engine and the control web app over the built-in
 server. The leak guard must stay empty:
 
 ```
-grep -rEi 'Cloud\\|CLOUD_|cloud:|kiption-cloud|cloud\.example\.test' src/ tests/ bin/ demo/ config.sample.php views/
+grep -rEi 'Cloud\\|CLOUD_|cloud:|kiption-cloud|cloud\.example\.test' src/ tests/ bin/ demo/ public/ views/ lang/ config.sample.php
 ```
 
 Releases: every task lands one `changelog.d/<slug>.md` fragment;

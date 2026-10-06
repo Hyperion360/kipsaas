@@ -12,6 +12,7 @@ return [
     'brand_url' => '/start', // where the brand links
     'mail' => ['transport' => 'log', 'log_path' => __DIR__ . '/data/mail.log', 'from' => 'noreply@saas.example.test'],
     'tenant_smtp' => null, // copied into every tenant config: ['host' => '', 'port' => 587, 'username' => '', 'password' => '', 'from' => '']
+    'tenant_trusted_proxy' => false, // true only when a TLS-terminating front (CDN, load balancer) sits in front of the web server AND origin access is restricted to it; stamped into every tenant config
     'tenant_app' => null, // REQUIRED before provisioning: your KipSaaS\TenantAppInterface implementation; the bundled demo ships one, e.g. new \KipSaaS\Demo\DemoApp()
     'plans' => [
         'standard' => ['price_id' => 'price_REPLACE_ME', 'label' => 'Standard', 'amount_month' => 900, 'storage_gb' => 2, 'powered_by' => true, 'note_cap' => 10],
