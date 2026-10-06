@@ -31,9 +31,24 @@ final class ControlApp
             exit("saas: token_secret is required in prod\n");
         }
 
-        session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax',
-            'secure' => (($_SERVER['HTTPS'] ?? '') === 'on') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')]);
-        session_start();
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+        // Machine routes never touch session state: a health probe or a
+        // Stripe delivery must not mint a session file and a Set-Cookie per
+        // request.
+        if ($path !== '/healthz' && $path !== '/webhooks/stripe') {
+            // The configured control URL is authoritative for the Secure
+            // flag (nginx's stock fastcgi_params never passes HTTPS, so
+            // header detection alone leaves the flag off on a TLS site);
+            // the header checks cover a fronting proxy that terminates TLS
+            // elsewhere and forwards the scheme.
+            $secure = str_starts_with(rtrim((string) ($config['control_base_url'] ?? ''), '/'), 'https://')
+                || (($_SERVER['HTTPS'] ?? '') === 'on')
+                || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+            session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'secure' => $secure]);
+            session_start();
+        }
 
         // lang_dir points the loader at an operator-owned pack (one file per
         // lang code, same shape as lang/en.php); the basename hop keeps the
@@ -58,9 +73,6 @@ final class ControlApp
             require dirname(__DIR__) . '/views/layout.php';
             exit;
         };
-
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
         // The billing state machine with the real map publisher. Constructed lazily
         // on the routes that need it, so a Stripe misconfiguration cannot break
