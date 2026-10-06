@@ -101,8 +101,8 @@ php bin/saas provision:tenant acme
 # Hand it to the owner over a trusted channel; it stays the password until your app offers a change or reset flow.
 
 php bin/saas tenants:list
-# id   slug   status   host                     plan      map
-# 1    acme   active   acme.saas.example.test   standard  routed
+# id   slug                     status     host                         plan map
+# 1    acme                     active     acme.saas.example.test       standard routed
 ```
 
 `provision:tenant` copied `demo/` into `tenants/acme/` (minus the excluded

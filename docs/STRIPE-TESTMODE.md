@@ -142,8 +142,8 @@ Observe the tenant, from the repo root:
 
 ```
 php bin/saas tenants:list
-# id   slug   status   host                      plan      map
-# 1    acme   active   acme.saas.example.test    standard  routed
+# id   slug                     status     host                         plan map
+# 1    acme                     active     acme.saas.example.test       standard routed
 
 ls tenants/acme
 cat data/saas-tenants.map    # if you pointed map_file at a scratch file
