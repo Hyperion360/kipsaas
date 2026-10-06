@@ -101,7 +101,7 @@ final class ControlApp
             }
             return new WebhookHandler($tenants, $provisioner, $config, function () use ($tenants, $config): void {
                 try {
-                    (new MapGen($tenants, $config['nginx']))->publish();
+                    (new MapGen($tenants, ['tenants_root' => $config['tenants_root']] + $config['nginx']))->publish();
                 } catch (\Throwable $e) {
                     error_log('saas: map publish failed: ' . $e->getMessage()); // cron map:write converges
                 }

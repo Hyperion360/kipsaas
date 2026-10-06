@@ -62,7 +62,7 @@ return [
     'mail' => ['transport' => 'log', 'log_path' => __DIR__ . '/data/mail.log', 'from' => 'noreply@saas.example.test'],
     'plans' => ['standard' => ['price_id' => 'price_fixture', 'label' => 'Standard', 'amount_month' => 900,
         'storage_gb' => 2, 'powered_by' => true, 'note_cap' => 10]],
-    'nginx' => ['map_file' => __DIR__ . '/tenants.map', 'tenants_root' => __DIR__ . '/tenants', 'empty_root' => '/srv/e',
+    'nginx' => ['map_file' => __DIR__ . '/tenants.map', 'empty_root' => '/srv/e',
         'control_public_root' => '/srv/c', 'control_host' => 'control.saas.example.test', 'reload' => false],
 ];
 PHP);
