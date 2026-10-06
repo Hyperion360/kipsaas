@@ -1,0 +1,1 @@
+Changed: the /verify 503 page now names the exact tenant_smtp config keys to set (host, port, username, password, from) and points at docs/STRIPE-TESTMODE.md, instead of only telling the reader to email the operator.

@@ -18,7 +18,7 @@ return [
     'verify_body' => 'One click left. Confirming starts the checkout for your plan.',
     'verify_submit' => 'Yes, this is me, continue to payment',
     'smtp_missing_heading' => 'Almost ready',
-    'smtp_missing_body' => 'Email delivery is not configured yet, so self-serve signup is paused. Email the operator and your site will be set up by hand.',
+    'smtp_missing_body' => 'Email delivery is not configured yet, so self-serve signup is paused. Operator: set tenant_smtp in config.php (host, port, username, password, from), following docs/STRIPE-TESTMODE.md. Until then, email the operator and your site will be set up by hand.',
     'link_invalid_heading' => 'Link invalid',
     'return_heading' => 'Payment received',
     'return_body' => 'Your site is being built now. You will get an email with your address and how to sign in within a few minutes.',
