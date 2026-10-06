@@ -98,7 +98,7 @@ php bin/saas provision:tenant acme
 # provisioned acme at https://acme.saas.example.test
 # SMTP is not configured for tenants, so no welcome mail was sent.
 # One-time password for owner@example.test: <base64 blob>
-# Hand it to the owner over a trusted channel; they change it after first login.
+# Hand it to the owner over a trusted channel; it stays the password until your app offers a change or reset flow.
 
 php bin/saas tenants:list
 # id   slug   status   host                     plan      map
@@ -117,6 +117,8 @@ php -S 127.0.0.1:8096 -t tenants/acme/public
 ```
 
 The login accepts `owner@example.test` and the printed one-time password.
+In the demo that password is the standing one: it ships no change-password
+UI, so wire a reset flow before you take a demo-shaped app to production.
 
 The self-serve path (signup form, email verification, Stripe checkout,
 webhook-driven provisioning) runs from the control web app:

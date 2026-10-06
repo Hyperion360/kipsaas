@@ -1,0 +1,1 @@
+Changed: the one-time-password handoff no longer claims owners change it after first login; the demo ships no change-password UI, so the README and the CLI print now say it stays the password until the app offers a change or reset flow, matching STRIPE-TESTMODE's hedge
