@@ -16,7 +16,7 @@ of the product: agent context files are a feature of this repository.
   Tenants, Signup, WebhookHandler, Provisioner, MapGen.
 - `tests/`: the engine suite, namespace `KipSaaS\Tests\`, PHPUnit 11.
 - `public/`, `views/`: the control web app (brand-parameterized).
-- `app/`, `migrations/`: the demo SaaS app consuming the engine.
+- `demo/`: the demo SaaS app (a complete stampable mini-install: config, bin/kip, migrations, public front controller, DemoApp adapter).
 - `bin/saas`: operator CLI. `bin/release`: changelog fragment release
   script. `changelog.d/`: one fragment per landed task.
 - `config.sample.php`: copy to `config.php` (gitignored) and fill in.
@@ -35,12 +35,12 @@ of the product: agent context files are a feature of this repository.
 ## Porting rule (leak guard)
 
 The engine was ported from a private, reviewed source. Nothing under
-`src/`, `tests/`, `bin/`, `app/`, `views/`, or `config.sample.php` may
+`src/`, `tests/`, `bin/`, `demo/`, `public/`, `views/`, `lang/`, or `config.sample.php` may
 carry that provenance: no `Cloud\` namespaces, no `CLOUD_` env prefixes,
 no `cloud:` log prefixes, no private repo names, private default paths, or
 private domains. The guard must return nothing:
 
-    grep -rEi 'Cloud\\|CLOUD_|cloud:|kiption-cloud|cloud\.example\.test' src/ tests/ bin/ app/ config.sample.php views/
+    grep -rEi 'Cloud\\|CLOUD_|cloud:|kiption-cloud|cloud\.example\.test' src/ tests/ bin/ demo/ public/ views/ lang/ config.sample.php
 
 ## Test commands
 
