@@ -153,6 +153,32 @@ PHP);
         self::assertStringContainsString('acme.saas.example.test', $map);
     }
 
+    public function test_prune_deletes_old_events_and_stale_rate_limit_rows_and_keeps_fresh(): void
+    {
+        $pdo = (new Registry('sqlite:' . $this->dir . '/data/registry.sqlite'))->pdo();
+        $tenants = new Tenants($pdo);
+        $id = $tenants->create('acme', 'acme.saas.example.test', 'standard', 'a@e.test', 'Acme', '', '');
+        $old = gmdate('Y-m-d\TH:i:s\Z', time() - 100 * 86400);
+        $fresh = gmdate('Y-m-d\TH:i:s\Z', time() - 86400);
+        $ins = $pdo->prepare("INSERT INTO events (stripe_event_id, type, tenant_id, payload_json, created_at)
+            VALUES (?, 'checkout.session.completed', ?, '{}', ?)");
+        $ins->execute(['evt_old', $id, $old]);
+        $ins->execute(['evt_fresh', $id, $fresh]);
+        $rl = $pdo->prepare('INSERT INTO rate_limits (bucket, hits, window_start) VALUES (?, 1, ?)');
+        $rl->execute(['signup:9.9.9.9', time() - 2 * 86400]);  // window started before the 1-day cutoff
+        $rl->execute(['signup:8.8.8.8', time() - 60]);
+
+        $out = $this->saas('prune');
+        self::assertStringContainsString('pruned 2 rows', $out);
+        self::assertSame('0', (string) $pdo->query("SELECT COUNT(*) FROM events WHERE stripe_event_id = 'evt_old'")->fetchColumn());
+        self::assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM events WHERE stripe_event_id = 'evt_fresh'")->fetchColumn());
+        self::assertSame('0', (string) $pdo->query("SELECT COUNT(*) FROM rate_limits WHERE bucket = 'signup:9.9.9.9'")->fetchColumn());
+        self::assertSame('1', (string) $pdo->query("SELECT COUNT(*) FROM rate_limits WHERE bucket = 'signup:8.8.8.8'")->fetchColumn());
+
+        $out = $this->saas('prune'); // idempotent: nothing left to prune
+        self::assertStringContainsString('pruned 0 rows', $out);
+    }
+
     public function test_doctor_checks_the_engine_side_and_prints_the_stack(): void
     {
         $out = $this->saas('doctor');
@@ -161,6 +187,7 @@ PHP);
         self::assertStringContainsString('ok  map path writable', $out);
         self::assertStringContainsString('ok  webhook secret set', $out);
         self::assertStringContainsString('ok  control host free', $out);
+        self::assertMatchesRegularExpression('/^prunable rows: \d+$/m', $out);
         self::assertStringContainsString('kipsaas ', $out);
         self::assertStringContainsString('kip/framework ', $out);
     }

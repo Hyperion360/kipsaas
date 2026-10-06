@@ -30,8 +30,11 @@ $provisioner = function () use ($config, $app): KipSaaS\ReferenceProvisioner {
     }, $app());
 };
 $maps = fn(): KipSaaS\MapGen => new KipSaaS\MapGen($repo(), ['tenants_root' => $config['tenants_root']] + $config['nginx']);
+// The prune policy lives here, once: event rows past a 90-day audit window,
+// rate-limit rows whose fixed window started more than a day ago.
+$pruneCutoffs = fn(): array => [gmdate('Y-m-d\TH:i:s\Z', time() - 90 * 86400), time() - 86400];
 
-$usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|doctor|version]\n";
+$usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|prune|doctor|version]\n";
 $command = $argv[1] ?? '';
 match ($command) {
     'map:write' => $maps()->publish(),
@@ -108,8 +111,13 @@ match ($command) {
             $maps()->publish();
         }
     })(),
-    'doctor' => (function () use ($config, $root): void {
+    'prune' => (function () use ($repo, $pruneCutoffs): void {
+        $n = $repo()->prune(...$pruneCutoffs());
+        echo "pruned {$n} rows\n";
+    })(),
+    'doctor' => (function () use ($config, $root, $pruneCutoffs): void {
         $fail = 0;
+        $prunable = null;
         $check = function (string $label, bool $ok, string $detail = '') use (&$fail): void {
             echo ($ok ? 'ok' : 'FAIL') . "  {$label}" . ($detail !== '' ? "  ({$detail})" : '') . "\n";
             if (!$ok) $fail++;
@@ -123,6 +131,7 @@ match ($command) {
             $squatter = (new KipSaaS\Tenants($reg->pdo()))->byHost($host);
             $check('control host free', $squatter === null,
                 $squatter !== null ? "{$host} is tenant '{$squatter['slug']}'" : $host);
+            $prunable = (new KipSaaS\Tenants($reg->pdo()))->prunable(...$pruneCutoffs());
         } catch (\Throwable $e) {
             $check('registry reachable', false, $e->getMessage());
         }
@@ -130,6 +139,7 @@ match ($command) {
         $mapFile = (string) ($config['nginx']['map_file'] ?? '');
         $check('map path writable', $mapFile !== '' && (is_writable($mapFile) || is_writable(dirname($mapFile))), $mapFile);
         $check('webhook secret set', ($config['env'] ?? 'prod') !== 'prod' || (string) ($config['stripe_webhook_secret'] ?? '') !== '');
+        if ($prunable !== null) echo "prunable rows: {$prunable}\n";
         echo 'kipsaas ' . KipSaaS\Version::kipsaas($root) . "\n";
         echo 'kip/framework ' . (KipSaaS\Version::lockedRef($root . '/composer.lock', 'kip/framework') ?? 'unknown') . "\n";
         if ($fail > 0) exit(1);
