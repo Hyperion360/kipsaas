@@ -90,6 +90,15 @@ final class SaasWebRecordingProvisioner implements KipSaaS\ProvisionerInterface
     public function suspend(array $tenant): void { file_put_contents($this->log, 'suspend ' . $tenant['slug'] . "\n", FILE_APPEND); }
     public function purge(array $tenant): void { file_put_contents($this->log, 'purge ' . $tenant['slug'] . "\n", FILE_APPEND); }
 }
+final class SaasWebCountingStripeHttp implements KipSaaS\StripeHttp
+{
+    public function __construct(private string $log) {}
+    public function post(string $path, array $form): array
+    {
+        file_put_contents($this->log, $path . "\n", FILE_APPEND);
+        return ['id' => 'cs_test', 'url' => 'https://checkout.stripe.com/c/pay/cs_test'];
+    }
+}
 return [
     'env' => 'dev',
     'registry_dsn' => 'sqlite:' . __DIR__ . '/data/registry.sqlite',
@@ -264,6 +273,41 @@ PHP);
         self::assertStringContainsString('Start your colony', $body);
         self::assertStringNotContainsString('Start your site', $body);
         self::assertStringContainsString('Brandtest', $body); // everything else is the pack's unchanged copy
+    }
+
+    public function test_a_double_submitted_claim_starts_exactly_one_checkout(): void
+    {
+        // Two POSTs of one verify link race the same pending tenant. The
+        // first claim wins and opens the checkout; the second must land
+        // somewhere true (the pending page) WITHOUT a second checkout
+        // session: one tenant, one session, no matter the submit count.
+        $dir = $this->scratch();
+        mkdir($dir . '/data', 0777, true);
+        mkdir($dir . '/tenants', 0777, true);
+        $tenants = new Tenants((new Registry('sqlite:' . $dir . '/data/registry.sqlite'))->pdo());
+        $id = $tenants->create('pend', 'pend.saas.example.test', 'standard', 'p@example.test', 'Pend', '', '');
+        $token = \KipSaaS\Tokens::issue('test-secret');
+        $tenants->update($id, ['verify_token_hash' => $token['hash'], 'verify_expires_at' => $token['expires_at']]);
+        $this->writeConfig($dir, "    'stripe_http' => new SaasWebCountingStripeHttp(__DIR__ . '/stripe.log'),\n");
+        $this->bootServer(8098, $dir . '/config.php');
+
+        [$status, $body] = $this->http(8098, 'GET', '/start');
+        self::assertSame(200, $status);
+        preg_match('/name="csrf" value="([0-9a-f]{64})"/', $body, $m);
+        $csrf = $m[1];
+
+        [$status, , $headers] = $this->http(8098, 'POST', '/verify/claim', ['csrf' => $csrf, 'token' => $token['token']]);
+        self::assertSame(303, $status);
+        self::assertContains('Location: https://checkout.stripe.com/c/pay/cs_test', $headers);
+
+        [$status, , $headers] = $this->http(8098, 'POST', '/verify/claim', ['csrf' => $csrf, 'token' => $token['token']]);
+        self::assertSame(303, $status);
+        self::assertContains('Location: /start/pending', $headers);
+
+        self::assertSame(1, substr_count((string) file_get_contents($dir . '/stripe.log'), '/v1/checkout/sessions'),
+            'two claim POSTs must open exactly one checkout session');
+        $pdo = new \PDO('sqlite:' . $dir . '/data/registry.sqlite');
+        self::assertSame('verified', $pdo->query("SELECT status FROM tenants WHERE slug = 'pend'")->fetchColumn());
     }
 
     public function test_the_claim_route_refuses_to_start_checkout_without_tenant_smtp(): void

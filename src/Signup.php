@@ -53,16 +53,27 @@ final class Signup
         return ['status' => 'pending', 'slug' => $slug];
     }
 
-    /** @return array{status: string, tenant?: array, error?: string} */
+    /** @return array{status: 'verified'|'already_claimed'|'error', tenant?: array, error?: string} */
     public function claim(string $givenToken): array
     {
-        $t = $this->tenants->byTokenHash(hash('sha256', $givenToken));
-        if ($t === null || $t['status'] !== 'pending'
+        $hash = hash('sha256', $givenToken);
+        $t = $this->tenants->byTokenHash($hash);
+        if ($t !== null && $t['status'] !== 'pending') {
+            // This link's token matches a row that already claimed: the first
+            // submit won. The caller answers with a clean redirect, never a
+            // scary 403 and never a second checkout session.
+            return ['status' => 'already_claimed'];
+        }
+        if ($t === null
             || !Tokens::valid($givenToken, $this->config['token_secret'], (string) $t['verify_token_hash'], (string) $t['verify_expires_at'])) {
             return ['status' => 'error', 'error' => 'That link is invalid, expired, or already used.'];
         }
-        $this->tenants->update((int) $t['id'], ['verify_token_hash' => null, 'verify_expires_at' => null]);
-        $this->tenants->setStatus((int) $t['id'], 'verified');
+        // The race gate: one compare-and-swap flips pending -> verified, so of
+        // two concurrent submits of the same link exactly one wins and opens
+        // the checkout; the loser joins the already-claimed path above.
+        if (!$this->tenants->markVerified((int) $t['id'], $hash)) {
+            return ['status' => 'already_claimed'];
+        }
         return ['status' => 'verified', 'tenant' => $this->tenants->byId((int) $t['id'])];
     }
 

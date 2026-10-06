@@ -87,9 +87,24 @@ final class SaasSignupTest extends TestCase
         $token = $this->mintToken($t); // re-derive the token from the stored hash using the test secret
 
         self::assertSame('verified', $s->claim($token)['status']);
-        self::assertNull($this->tenants->bySlug('acme')['verify_token_hash']); // single use
-        self::assertSame('error', $s->claim($token)['status']); // replay
+        self::assertSame('verified', $this->tenants->bySlug('acme')['status']);
+        self::assertSame('already_claimed', $s->claim($token)['status']); // replay: a clean redirect, never a second claim
         self::assertSame('error', $s->claim($token . 'x')['status']); // forged
+    }
+
+    public function test_the_claim_compare_and_swap_admits_exactly_one_winner(): void
+    {
+        // The double-submit race: two claims of one token must not both pass.
+        // The CAS flips pending -> verified for exactly one caller; the loser
+        // joins the already-claimed path instead of minting a second session.
+        $s = $this->signup();
+        $s->submit('ow@example.test', 'acme', 'standard', '1.2.3.4');
+        $t = $this->tenants->bySlug('acme');
+        $token = $this->mintToken($t);
+        $hash = hash('sha256', $token);
+        self::assertTrue($this->tenants->markVerified((int) $t['id'], $hash)); // first submit wins
+        self::assertFalse($this->tenants->markVerified((int) $t['id'], $hash)); // the double submit loses
+        self::assertSame('already_claimed', $s->claim($token)['status']);
     }
 
     /** Recompute a token matching the stored hash: same construction as Signup::submit. */

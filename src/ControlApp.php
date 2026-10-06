@@ -78,7 +78,13 @@ final class ControlApp
             (new \Kip\Mailer($config['mail']))->send($to, $subject, $body);
         };
         $signup = new Signup($tenants, $config, $mail);
-        $stripe = new StripeClient(new StreamStripeHttp((string) $config['stripe_secret']), $config);
+        // The Stripe HTTP transport is bindable (tests inject a recording
+        // double); the streaming default otherwise. Same seam shape as the
+        // provisioner binding below.
+        $stripeHttp = ($config['stripe_http'] ?? null) instanceof StripeHttp
+            ? $config['stripe_http']
+            : new StreamStripeHttp((string) $config['stripe_secret']);
+        $stripe = new StripeClient($stripeHttp, $config);
 
         $view = function (string $name, array $vars = []) use ($config, $lang, $brand, $brandUrl, $viewDir): never {
             extract($vars, EXTR_SKIP);
@@ -152,6 +158,13 @@ final class ControlApp
                 }
                 Csrf::check($_POST['csrf'] ?? null);
                 $out = $signup->claim((string) ($_POST['token'] ?? ''));
+                if ($out['status'] === 'already_claimed') {
+                    // A second submit of a used link (double click, retry, or a
+                    // concurrent twin): the first claim won and opened the only
+                    // checkout. Send the person somewhere true instead of a 403.
+                    header('Location: /start/pending', true, 303);
+                    exit;
+                }
                 if ($out['status'] !== 'verified') {
                     http_response_code(403);
                     $view('error.php', ['title' => $lang['link_invalid_heading'], 'message' => (string) $out['error']]);

@@ -74,6 +74,22 @@ final class Tenants
         $q->execute([...array_values($fields), $id]);
     }
 
+    /**
+     * The signup claim's atomic compare-and-swap: flips pending -> verified
+     * only while the row still carries this token hash, so of two concurrent
+     * submits of one link exactly one wins the rowCount. The spent hash stays
+     * on the row: a replayed link must resolve to "already claimed", not to
+     * an unknown-token error.
+     */
+    public function markVerified(int $id, string $tokenHash): bool
+    {
+        $q = $this->pdo->prepare("UPDATE tenants SET status = 'verified',
+            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = ? AND status = 'pending' AND verify_token_hash = ?");
+        $q->execute([$id, $tokenHash]);
+        return $q->rowCount() === 1;
+    }
+
     public function update(int $id, array $fields): void
     {
         foreach (array_keys($fields) as $c) {
