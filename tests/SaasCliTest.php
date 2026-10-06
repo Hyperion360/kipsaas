@@ -150,8 +150,23 @@ PHP);
         self::assertStringContainsString('ok  code_source present', $out);
         self::assertStringContainsString('ok  map path writable', $out);
         self::assertStringContainsString('ok  webhook secret set', $out);
+        self::assertStringContainsString('ok  control host free', $out);
         self::assertStringContainsString('kipsaas ', $out);
         self::assertStringContainsString('kip/framework ', $out);
+    }
+
+    public function test_doctor_fails_when_a_tenant_squats_the_control_host(): void
+    {
+        // Two map lines for one host is an invalid nginx map; the doctor must
+        // catch the collision before nginx -t does, at reload time.
+        $tenants = new Tenants((new Registry('sqlite:' . $this->dir . '/data/registry.sqlite'))->pdo());
+        $id = $tenants->create('squatter', 'control.saas.example.test', 'standard', 's@e.test', 'Squatter', '', '');
+        $tenants->setStatus($id, 'verified');
+        $tenants->setStatus($id, 'active');
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/bin/saas')
+            . ' doctor 2>&1', $out, $code);
+        self::assertSame(1, $code);
+        self::assertStringContainsString('FAIL  control host free', implode("\n", $out));
     }
 
     public function test_version_reads_the_real_lock_for_the_framework_pin(): void

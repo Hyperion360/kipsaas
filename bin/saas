@@ -115,8 +115,14 @@ match ($command) {
             if (!$ok) $fail++;
         };
         try {
-            new KipSaaS\Registry($config['registry_dsn']);
+            $reg = new KipSaaS\Registry($config['registry_dsn']);
             $check('registry reachable', true);
+            $host = (string) ($config['nginx']['control_host'] ?? '');
+            // A tenant squatting the control host would put two keys in one
+            // nginx map: invalid config that only surfaces at reload time.
+            $squatter = (new KipSaaS\Tenants($reg->pdo()))->byHost($host);
+            $check('control host free', $squatter === null,
+                $squatter !== null ? "{$host} is tenant '{$squatter['slug']}'" : $host);
         } catch (\Throwable $e) {
             $check('registry reachable', false, $e->getMessage());
         }
