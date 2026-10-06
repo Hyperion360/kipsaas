@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d5f17d8c5168d78c0de3684f40d895e1",
+    "content-hash": "cdf9503353b4ffabe8e6026c950dd440",
     "packages": [
         {
             "name": "kip/framework",
-            "version": "dev-main",
+            "version": "v0.5.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Hyperion360/kip.git",
-                "reference": "2979b924372eaaec4f48b4fe11337e3362cdf45b"
+                "reference": "2deab2bcedf7d80dc5a07681fd128f6237fa7602"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Hyperion360/kip/zipball/2979b924372eaaec4f48b4fe11337e3362cdf45b",
-                "reference": "2979b924372eaaec4f48b4fe11337e3362cdf45b",
+                "url": "https://api.github.com/repos/Hyperion360/kip/zipball/2deab2bcedf7d80dc5a07681fd128f6237fa7602",
+                "reference": "2deab2bcedf7d80dc5a07681fd128f6237fa7602",
                 "shasum": ""
             },
             "require": {
@@ -28,7 +28,6 @@
                 "phpstan/phpstan": "^2.2",
                 "phpunit/phpunit": "^11"
             },
-            "default-branch": true,
             "type": "library",
             "extra": {
                 "branch-alias": {
@@ -75,7 +74,7 @@
                 "issues": "https://github.com/Hyperion360/kip/issues",
                 "source": "https://github.com/Hyperion360/kip"
             },
-            "time": "2026-10-01T13:47:13+00:00"
+            "time": "2026-10-06T06:49:55+00:00"
         }
     ],
     "packages-dev": [
@@ -1846,9 +1845,7 @@
     ],
     "aliases": [],
     "minimum-stability": "dev",
-    "stability-flags": {
-        "kip/framework": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
