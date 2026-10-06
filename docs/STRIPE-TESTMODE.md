@@ -151,9 +151,8 @@ cat data/saas-tenants.map    # if you pointed map_file at a scratch file
 
 The welcome mail ("Your site is ready: ...") is in the mailpit inbox.
 The owner account is the signup email; the mail carries a one-time
-sign-in password for the first login (change it once inside the app if
-the app offers account settings or a password reset). Serve the tenant
-to believe it:
+sign-in password for the first login (change it at /auth/password in the
+tenant app on first login). Serve the tenant to believe it:
 
 ```
 php -S 127.0.0.1:8096 -t tenants/acme/public

@@ -82,15 +82,7 @@ PHP);
 
     public function test_provisioned_demo_serves_auth_notes_and_enforces_the_plan_cap(): void
     {
-        $email = 'owner@notes.example.test';
-        $out = $this->saas('tenant:create', 'noteco', 'standard', $email, 'Noteco Notes');
-        self::assertStringContainsString('recorded as active', $out);
-        $out = $this->saas('provision:tenant', 'noteco');
-        self::assertStringContainsString('provisioned noteco', $out);
-        self::assertMatchesRegularExpression('/One-time password for ' . preg_quote($email, '/') . ': (\S+)/', $out);
-        $otp = preg_split('/\s+/', trim((string) preg_replace('/.*One-time password for [^:]+: (\S+).*/s', '$1', $out)))[0];
-        self::assertNotFalse($otp);
-        self::assertNotSame('', $otp);
+        ['otp' => $otp, 'email' => $email] = $this->provisionDemoTenant();
 
         // The stamp: a complete, self-contained install with the rendered config.
         $dir = $this->tenants . '/noteco';
@@ -151,6 +143,62 @@ PHP);
         self::assertSame(402, $capped['status']);
         self::assertStringContainsString('Plan limit reached: 10 notes', $capped['body']);
         self::assertSame(10, (int) $pdo->query('SELECT COUNT(*) FROM notes')->fetchColumn());
+    }
+
+    /** Provision noteco into the fresh scratch registry; returns the printed one-time password. @return array{otp: string, email: string} */
+    private function provisionDemoTenant(): array
+    {
+        $email = 'owner@notes.example.test';
+        $out = $this->saas('tenant:create', 'noteco', 'standard', $email, 'Noteco Notes');
+        self::assertStringContainsString('recorded as active', $out);
+        $out = $this->saas('provision:tenant', 'noteco');
+        self::assertStringContainsString('provisioned noteco', $out);
+        self::assertMatchesRegularExpression('/One-time password for ' . preg_quote($email, '/') . ': (\S+)/', $out);
+        $otp = preg_split('/\s+/', trim((string) preg_replace('/.*One-time password for [^:]+: (\S+).*/s', '$1', $out)))[0];
+        self::assertNotFalse($otp);
+        self::assertNotSame('', $otp);
+        return ['otp' => $otp, 'email' => $email];
+    }
+
+    public function test_the_one_time_password_can_be_changed_and_the_old_one_dies(): void
+    {
+        // The demo OTP is a standing password until the app offers a change
+        // flow, so the demo ships one: /auth/password, auth-gated, current
+        // password verified, new hash written in one transaction.
+        ['otp' => $otp, 'email' => $email] = $this->provisionDemoTenant();
+        $this->startServer($this->tenants . '/noteco');
+
+        $attempt = $this->post('/auth/attempt', ['email' => $email, 'password' => $otp]);
+        self::assertSame(302, $attempt['status'], $attempt['body']);
+
+        $form = $this->get('/auth/password');
+        self::assertSame(200, $form['status']);
+        self::assertStringContainsString('action="/auth/password"', $form['body']);
+        $token = $this->csrf($form['body']);
+
+        $wrong = $this->post('/auth/password', ['_token' => $token, 'current_password' => 'not-the-password',
+            'new_password' => 'correct horse battery staple', 'confirm_password' => 'correct horse battery staple']);
+        self::assertSame(422, $wrong['status']);
+        self::assertStringContainsString('current password is wrong', $wrong['body']);
+
+        $mismatch = $this->post('/auth/password', ['_token' => $token, 'current_password' => $otp,
+            'new_password' => 'correct horse battery staple', 'confirm_password' => 'a different string']);
+        self::assertSame(422, $mismatch['status']);
+        self::assertStringContainsString('do not match', $mismatch['body']);
+
+        $changed = $this->post('/auth/password', ['_token' => $token, 'current_password' => $otp,
+            'new_password' => 'correct horse battery staple', 'confirm_password' => 'correct horse battery staple']);
+        self::assertSame(302, $changed['status'], $changed['body']);
+
+        // This session stays signed in (its epoch rides the new hash); log
+        // out and prove exactly one password opens the door now.
+        $this->post('/auth/logout', ['_token' => $this->csrf($this->get('/notes')['body'])]);
+        $old = $this->post('/auth/attempt', ['email' => $email, 'password' => $otp]);
+        self::assertSame(200, $old['status']);
+        self::assertStringContainsString('Wrong email or password', $old['body']);
+        $new = $this->post('/auth/attempt', ['email' => $email, 'password' => 'correct horse battery staple']);
+        self::assertSame(302, $new['status'], $new['body']);
+        self::assertSame('/notes', $new['headers']['location'] ?? '');
     }
 
     private function saas(string ...$args): string

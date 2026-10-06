@@ -117,8 +117,9 @@ php -S 127.0.0.1:8096 -t tenants/acme/public
 ```
 
 The login accepts `owner@example.test` and the printed one-time password.
-In the demo that password is the standing one: it ships no change-password
-UI, so wire a reset flow before you take a demo-shaped app to production.
+That password stays the account password only until the owner changes it:
+the demo ships a change-password form at `/auth/password` (log in first;
+the header links it), so change it there on first login.
 
 The self-serve path (signup form, email verification, Stripe checkout,
 webhook-driven provisioning) runs from the control web app:

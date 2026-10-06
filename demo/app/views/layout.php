@@ -23,6 +23,7 @@
   <header>
     <a href="/">Notes</a>
     <?php if (($loggedIn ?? false) && isset($csrf)): ?>
+    <a href="/auth/password">Password</a>
     <form method="post" action="/auth/logout">
       <input type="hidden" name="_token" value="<?= $this->e($csrf) ?>">
       <button>Log out</button>

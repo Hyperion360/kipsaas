@@ -1,0 +1,1 @@
+Added: the demo ships a change-password flow at /auth/password (auth-gated GET form, POST verifies the current password and writes the new hash in one transaction; the session epoch rides the new hash so this session stays signed in and other sessions are revoked), and the README and STRIPE-TESTMODE hedge that said the demo password is standing now points at the form.
