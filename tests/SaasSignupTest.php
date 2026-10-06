@@ -79,6 +79,23 @@ final class SaasSignupTest extends TestCase
         self::assertSame('rate_limited', $s->submit('ow@example.test', 'tenant-5', 'standard', '10.0.0.5')['status']);
     }
 
+    public function test_invalid_submissions_do_not_burn_the_email_bucket(): void
+    {
+        // The per-email bucket exists to stop signup floods for one address,
+        // not to let garbage input lock a real person out: it must burn only
+        // once the input validates. Ten invalid submits (each from a fresh IP,
+        // so the IP bucket never interferes) leave the email bucket untouched.
+        $s = $this->signup();
+        for ($i = 0; $i < 10; $i++) {
+            $out = $s->submit('ow@example.test', "Bad Title! {$i}", 'gold', "10.1.0.{$i}");
+            self::assertSame('error', $out['status'], (string) $i);
+        }
+        for ($i = 0; $i < 5; $i++) {
+            self::assertSame('pending', $s->submit('ow@example.test', "tenant-{$i}", 'standard', "10.2.0.{$i}")['status']);
+        }
+        self::assertSame('rate_limited', $s->submit('ow@example.test', 'tenant-5', 'standard', '10.2.0.9')['status']);
+    }
+
     public function test_claim_activates_only_with_a_valid_unexpired_unclaimed_token(): void
     {
         $s = $this->signup();
