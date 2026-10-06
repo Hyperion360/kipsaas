@@ -266,6 +266,22 @@ PHP);
         self::assertStringContainsString('Brandtest', $body); // everything else is the pack's unchanged copy
     }
 
+    public function test_the_claim_route_refuses_to_start_checkout_without_tenant_smtp(): void
+    {
+        // The GET interstitial 503s without tenant SMTP; the claim POST must
+        // carry the same gate, or a direct POST starts a checkout that ends
+        // at a provisioned tenant whose owner password nobody can know.
+        $dir = $this->scratch();
+        mkdir($dir . '/data', 0777, true);
+        mkdir($dir . '/tenants', 0777, true);
+        $this->writeConfig($dir, "    'tenant_smtp' => null,\n");
+        $this->bootServer(8095, $dir . '/config.php');
+
+        [$status, $body] = $this->http(8095, 'POST', '/verify/claim', ['csrf' => 'x', 'token' => 'forged.token']);
+        self::assertSame(503, $status);
+        self::assertStringContainsString('paused', $body); // the smtp_missing error page, not a 403 claim rejection
+    }
+
     public function test_signature_helper_agrees_with_the_engine(): void
     {
         // sanity for the smoke's own signing: the engine accepts what we minted

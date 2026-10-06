@@ -59,17 +59,23 @@ final class ReferenceProvisioner implements ProvisionerInterface
         }
         $url = 'https://' . $tenant['host'];
         if (is_array($this->config['tenant_smtp'] ?? null)) {
+            // The SMTP caller is a webhook: it cannot hand a password over out
+            // of band, so the welcome mail carries the one-time password
+            // itself (same trust channel the verify link used). Without this,
+            // owners of apps without a password-reset flow could never sign
+            // in: the mail used to point at a reset the app may not have.
             ($this->mail)($tenant['owner_email'], 'Your site is ready: ' . $tenant['title'],
                 "{$tenant['title']} is live at {$url}\n\n"
-                . "The owner account is {$tenant['owner_email']}. Sign in at {$url}; set your\n"
-                . "password through the password reset if you have not already, then finish\n"
-                . "setup under your site's admin area.\n");
+                . "The owner account is {$tenant['owner_email']}.\n"
+                . "One-time sign-in password: {$oneTime}\n"
+                . "Sign in at {$url} with it, then change it through your site's\n"
+                . "account settings or password reset.\n");
             return ['mail_sent' => true, 'one_time_password' => null];
         }
         // No tenant SMTP configured: welcome mail cannot arrive, so onboarding
         // falls back to a one-time password the CALLER hands over out of band
         // (the CLI prints it for the operator; the self-serve web path refuses
-        // to run without SMTP, see the verify route's guard).
+        // to run without SMTP, see the verify routes' guard).
         return ['mail_sent' => false, 'one_time_password' => $oneTime];
     }
 
