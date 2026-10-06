@@ -3,3 +3,9 @@
 /data/
 /tenants/
 .phpunit.result.cache
+/demo/vendor/
+/demo/app/*.sqlite
+/demo/app/*.sqlite-*
+/demo/app/nav.json
+/demo/app/mail.log
+/demo/public/robots.txt

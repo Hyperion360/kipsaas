@@ -1,0 +1,10 @@
+{
+  "name": "hyperion360/kipsaas-demo",
+  "description": "The KipSaaS demo notes app: a complete, stampable Kip install under demo/ that the provisioner copies per tenant.",
+  "license": "MIT",
+  "repositories": [{ "type": "vcs", "url": "https://github.com/Hyperion360/kip" }],
+  "require": { "php": ">=8.3", "ext-pdo_sqlite": "*", "kip/framework": "^0.5@dev" },
+  "autoload": { "psr-4": { "App\\": "src/" } },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}
