@@ -42,10 +42,8 @@ final class ReferenceProvisioner implements ProvisionerInterface
 
     public function provision(array $tenant): array
     {
-        $slug = (string) $tenant['slug'];
-        Slug::normalize($slug); // defence in depth: the registry row must still satisfy the firewall
-        $dir = $this->config['tenants_root'] . '/' . $slug;
-        if (is_dir($dir)) throw new \RuntimeException("tenant directory already exists: {$slug}");
+        $dir = $this->tenantDir($tenant);
+        if (is_dir($dir)) throw new \RuntimeException("tenant directory already exists: {$tenant['slug']}");
         try {
             $this->copySkeleton($this->config['code_source'], $dir);
             file_put_contents($dir . '/config.php', $this->renderConfig($tenant, $dir));
@@ -55,7 +53,7 @@ final class ReferenceProvisioner implements ProvisionerInterface
             $oneTime = $this->app->createOwner($this->ownerDb($dir), $tenant);
         } catch (\Throwable $e) {
             $this->rmDir($dir); // a half-built tenant must never block its own retry
-            throw new \RuntimeException('provisioning ' . $slug . ' failed: ' . $e->getMessage(), 0, $e);
+            throw new \RuntimeException('provisioning ' . $tenant['slug'] . ' failed: ' . $e->getMessage(), 0, $e);
         }
         $url = 'https://' . $tenant['host'];
         if (is_array($this->config['tenant_smtp'] ?? null)) {
@@ -82,7 +80,7 @@ final class ReferenceProvisioner implements ProvisionerInterface
     public function resume(array $tenant): void
     {
         // The mirror of suspend(): a paying-again customer gets the site back.
-        $lock = $this->config['tenants_root'] . '/' . $tenant['slug'] . '/app/maintenance.lock';
+        $lock = $this->tenantDir($tenant) . '/app/maintenance.lock';
         if (is_file($lock)) @unlink($lock);
     }
 
@@ -90,14 +88,21 @@ final class ReferenceProvisioner implements ProvisionerInterface
     {
         // The app's own maintenance mode becomes the suspension screen: no new
         // page to build, and operators already know the lock file.
-        $lock = $this->config['tenants_root'] . '/' . $tenant['slug'] . '/app/maintenance.lock';
+        $lock = $this->tenantDir($tenant) . '/app/maintenance.lock';
         if (is_dir(dirname($lock))) file_put_contents($lock, (string) time());
     }
 
     public function purge(array $tenant): void
     {
-        $dir = $this->config['tenants_root'] . '/' . $tenant['slug'];
-        $this->rmDir($dir);
+        $this->rmDir($this->tenantDir($tenant));
+    }
+
+    /** The tenant's root under tenants_root; the slug re-validates so a hand-edited registry row can never build an escaping path. */
+    private function tenantDir(array $tenant): string
+    {
+        $slug = (string) $tenant['slug'];
+        Slug::normalize($slug); // defence in depth: the registry row must still satisfy the firewall
+        return $this->config['tenants_root'] . '/' . $slug;
     }
 
     private function ownerDb(string $dir): \PDO
@@ -107,7 +112,9 @@ final class ReferenceProvisioner implements ProvisionerInterface
 
     private function copySkeleton(string $source, string $dest): void
     {
-        if (!is_dir($dest)) mkdir($dest, 0775, true); // iterator order is undefined; a root-level file must never race the first mkdir
+        if (!is_dir($dest) && !@mkdir($dest, 0775, true)) { // iterator order is undefined; a root-level file must never race the first mkdir
+            throw new \RuntimeException("could not create tenant root {$dest}");
+        }
         $this->copyTree($source, $dest, '', []);
     }
 
@@ -131,13 +138,19 @@ final class ReferenceProvisioner implements ProvisionerInterface
                 if ($item->isLink()) {
                     $real = (string) $item->getRealPath();
                     if (in_array($real, $seen, true)) continue;
-                    if (!is_dir($target)) mkdir($target, 0775, true);
+                    if (!is_dir($target) && !@mkdir($target, 0775, true)) {
+                        throw new \RuntimeException("could not create {$rel}");
+                    }
                     $this->copyTree($real, $tenantRoot, $rel . '/', [...$seen, $real]);
-                } elseif (!is_dir($target)) {
-                    mkdir($target, 0775, true);
+                } elseif (!is_dir($target) && !@mkdir($target, 0775, true)) {
+                    throw new \RuntimeException("could not create {$rel}");
                 }
-            } else {
-                copy((string) $item->getPathname(), $target); // file links dereference here
+            } elseif (!@copy((string) $item->getPathname(), $target)) {
+                // A copy that returns false (permissions, disk full) must abort
+                // the stamp: "succeeded with files missing" is the worst outcome.
+                // The native warning is suppressed because the exception below
+                // is the failure report.
+                throw new \RuntimeException("could not copy {$rel}");
             }
         }
     }
@@ -175,7 +188,11 @@ final class ReferenceProvisioner implements ProvisionerInterface
         $cfg['backups']['dir'] = $app . '/backups';
         $cfg['base_url'] = 'https://' . $tenant['host'];
         $cfg['site_name'] = (string) $tenant['title'];
-        $cfg['trusted_proxy'] = true; // a fronting proxy terminates TLS in front of the web server
+        // Stamps follow the operator's topology, not ours: bare nginx passes
+        // client-supplied X-Forwarded-* straight through, so trusting them by
+        // default lets a tenant visitor spoof an IP past per-IP throttles.
+        // Only a TLS-terminating front with origin access restricted opts in.
+        $cfg['trusted_proxy'] = (bool) ($this->config['tenant_trusted_proxy'] ?? false);
         $cfg['powered_by'] = Plans::poweredBy($this->config, (string) $tenant['plan']);
         // Per-plan feature limits (note_cap and friends) cross into the tenant
         // config under plan_flags: the tenant app enforces its plan's quotas

@@ -173,6 +173,50 @@ PHP);
         self::assertTrue(password_verify($m[1], $hash), 'the mailed password must open the owner account');
     }
 
+    public function test_an_unreadable_source_file_aborts_the_stamp_clean(): void
+    {
+        // copy() that returns false (permissions, disk full mid-tree) used to
+        // be ignored: provisioning "succeeded" with files missing from the
+        // stamp. A failed copy must abort and roll the directory back.
+        file_put_contents($this->code . '/app/blocked.txt', 'x');
+        chmod($this->code . '/app/blocked.txt', 0000);
+        try {
+            $this->provisioner()->provision($this->tenant());
+            self::fail('an unreadable source file must abort provisioning');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('provisioning acme failed', $e->getMessage());
+        }
+        self::assertFileDoesNotExist($this->root . '/tenants/acme');
+        chmod($this->code . '/app/blocked.txt', 0644); // let teardown remove it
+    }
+
+    public function test_tenants_trust_forwarded_headers_only_when_the_operator_opts_in(): void
+    {
+        // Bare nginx (the kit's default topology) passes client-supplied
+        // X-Forwarded-* straight through: stamping trusted_proxy=true would
+        // let tenant visitors spoof their IP past per-IP throttles. A
+        // TLS-terminating front with restricted origin access opts in.
+        $this->provisioner()->provision($this->tenant());
+        $cfg = require $this->root . '/tenants/acme/config.php';
+        self::assertFalse($cfg['trusted_proxy']);
+
+        $cfg2 = ['tenants_root' => $this->root . '/tenants', 'code_source' => $this->code,
+            'base_domain' => 'saas.example.test', 'tenant_trusted_proxy' => true,
+            'tenant_smtp' => null, 'plans' => ['standard' => ['powered_by' => true]]];
+        (new ReferenceProvisioner($cfg2, fn() => null, new FakeTenantApp()))->provision($this->tenant(slug: 'fronted'));
+        self::assertTrue((require $this->root . '/tenants/fronted/config.php')['trusted_proxy']);
+    }
+
+    public function test_a_forged_slug_row_cannot_path_escape_suspend_or_purge(): void
+    {
+        // Registry rows reach suspend/resume/purge as-is; the same firewall
+        // provision() applies must reject a hand-edited slug before any path
+        // is built from it.
+        $rogue = array_merge($this->tenant(), ['slug' => '../escape']);
+        $this->expectException(\DomainException::class);
+        $this->provisioner()->purge($rogue);
+    }
+
     public function test_suspend_resume_and_purge_round_trip(): void
     {
         $p = $this->provisioner();
