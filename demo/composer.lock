@@ -8,16 +8,16 @@
     "packages": [
         {
             "name": "kip/framework",
-            "version": "dev-main",
+            "version": "v0.5.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Hyperion360/kip.git",
-                "reference": "ee20f6b0f0b612e2574c98986f5d99023859eaa8"
+                "reference": "2deab2bcedf7d80dc5a07681fd128f6237fa7602"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Hyperion360/kip/zipball/ee20f6b0f0b612e2574c98986f5d99023859eaa8",
-                "reference": "ee20f6b0f0b612e2574c98986f5d99023859eaa8",
+                "url": "https://api.github.com/repos/Hyperion360/kip/zipball/2deab2bcedf7d80dc5a07681fd128f6237fa7602",
+                "reference": "2deab2bcedf7d80dc5a07681fd128f6237fa7602",
                 "shasum": ""
             },
             "require": {
@@ -28,7 +28,6 @@
                 "phpstan/phpstan": "^2.2",
                 "phpunit/phpunit": "^11"
             },
-            "default-branch": true,
             "type": "library",
             "extra": {
                 "branch-alias": {
@@ -75,7 +74,7 @@
                 "issues": "https://github.com/Hyperion360/kip/issues",
                 "source": "https://github.com/Hyperion360/kip"
             },
-            "time": "2026-10-05T16:13:03+00:00"
+            "time": "2026-10-06T06:49:55+00:00"
         }
     ],
     "packages-dev": [],
