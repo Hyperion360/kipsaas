@@ -275,11 +275,57 @@ PHP);
         mkdir($dir . '/data', 0777, true);
         mkdir($dir . '/tenants', 0777, true);
         $this->writeConfig($dir, "    'tenant_smtp' => null,\n");
-        $this->bootServer(8095, $dir . '/config.php');
+        $this->bootServer(8092, $dir . '/config.php');
 
-        [$status, $body] = $this->http(8095, 'POST', '/verify/claim', ['csrf' => 'x', 'token' => 'forged.token']);
+        [$status, $body] = $this->http(8092, 'POST', '/verify/claim', ['csrf' => 'x', 'token' => 'forged.token']);
         self::assertSame(503, $status);
         self::assertStringContainsString('paused', $body); // the smtp_missing error page, not a 403 claim rejection
+    }
+
+    public function test_machine_routes_never_start_a_session(): void
+    {
+        // A health probe or a Stripe delivery arriving without a session
+        // cookie must not mint one: per-request session files and Set-Cookie
+        // headers on machine routes are pure churn.
+        $this->cookie = '';
+        [$status, , $headers] = $this->http(8097, 'GET', '/healthz');
+        self::assertSame(200, $status);
+        foreach ($headers as $h) {
+            self::assertDoesNotMatchRegularExpression('/^set-cookie:/i', $h, 'healthz must not set a session cookie');
+        }
+        self::assertSame('', $this->cookie, 'no cookie may be captured from healthz');
+
+        $this->cookie = '';
+        [$status, , $headers] = $this->http(8097, 'POST', '/webhooks/stripe', [], ['Content-Type: application/json'], '{}');
+        self::assertSame(403, $status);
+        self::assertSame('', $this->cookie, 'no cookie may be captured from the webhook route');
+        foreach ($headers as $h) {
+            self::assertDoesNotMatchRegularExpression('/^set-cookie:/i', $h, 'the webhook route must not set a session cookie');
+        }
+    }
+
+    public function test_session_cookie_carries_secure_when_the_control_url_is_https(): void
+    {
+        // nginx's stock fastcgi_params never passes HTTPS, and a spoofable
+        // X-Forwarded-Proto is the wrong basis for the flag: the configured
+        // control URL is authoritative.
+        $dir = $this->scratch();
+        mkdir($dir . '/data', 0777, true);
+        mkdir($dir . '/tenants', 0777, true);
+        $this->writeConfig($dir, "    'control_base_url' => 'https://control.saas.example.test',\n");
+        $this->bootServer(8094, $dir . '/config.php');
+
+        $this->cookie = '';
+        [$status, , $headers] = $this->http(8094, 'GET', '/start');
+        self::assertSame(200, $status);
+        $seen = false;
+        foreach ($headers as $h) {
+            if (stripos($h, 'Set-Cookie: PHPSESSID=') === 0) {
+                $seen = true;
+                self::assertStringContainsStringIgnoringCase('secure', $h, 'an https control URL must set the Secure flag even over a plain http request');
+            }
+        }
+        self::assertTrue($seen, 'the start page must set a session cookie');
     }
 
     public function test_signature_helper_agrees_with_the_engine(): void
