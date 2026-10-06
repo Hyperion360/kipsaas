@@ -1,0 +1,1 @@
+Fixed: the provisioner's COPY_EXCLUDES also excludes app/data.sqlite-wal and app/data.sqlite-shm, so a code_source stamped from a live WAL-mode checkout no longer ships the template's journal sidecars (the match is exact-or-dir-prefix, so the sidecar names were falling through)

@@ -34,7 +34,8 @@ final class ReferenceProvisioner implements ProvisionerInterface
 {
     private const COPY_EXCLUDES = ['config.php', '.git', '.gstack', 'tests', 'docs', 'resources',
         'qa-full-reports', 'daily-qa-reports', '.claude', '.env',
-        'app/data.sqlite', 'app/logs.sqlite', 'app/cache.sqlite', 'app/backups', 'app/mail.log', 'app/maintenance.lock',
+        'app/data.sqlite', 'app/data.sqlite-wal', 'app/data.sqlite-shm', 'app/logs.sqlite', 'app/cache.sqlite',
+        'app/backups', 'app/mail.log', 'app/maintenance.lock',
         'app/nav.json', 'public/cache', 'public/uploads', 'public/robots.txt'];
 
     /** @param \Closure(string,string,string):void $mail (to, subject, body) */

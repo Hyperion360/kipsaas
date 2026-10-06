@@ -127,6 +127,22 @@ PHP);
         self::assertSame('0', (string) $pdo->query('SELECT COUNT(*) FROM users WHERE email != ' . $pdo->quote('ow@example.test'))->fetchColumn());
     }
 
+    public function test_wal_sidecars_of_the_template_database_never_ship_in_a_stamp(): void
+    {
+        // 'app/data.sqlite' excludes exactly that name; SQLite's WAL leaves
+        // -wal and -shm sidecars beside it, and a template stamped from a
+        // live checkout would carry the operator's data in the sidecar even
+        // though the main file was excluded.
+        file_put_contents($this->code . '/app/data.sqlite', 'template data');
+        file_put_contents($this->code . '/app/data.sqlite-wal', 'template wal');
+        file_put_contents($this->code . '/app/data.sqlite-shm', 'template shm');
+        $this->provisioner()->provision($this->tenant());
+        $dir = $this->root . '/tenants/acme';
+        self::assertStringNotContainsString('template', (string) file_get_contents($dir . '/app/data.sqlite'), 'the fresh database must be the stamp\'s own');
+        self::assertFileDoesNotExist($dir . '/app/data.sqlite-wal');
+        self::assertFileDoesNotExist($dir . '/app/data.sqlite-shm');
+    }
+
     public function test_pro_plan_hides_the_powered_by_link(): void
     {
         $this->provisioner()->provision($this->tenant(plan: 'pro'));
