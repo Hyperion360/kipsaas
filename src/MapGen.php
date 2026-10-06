@@ -16,12 +16,20 @@ final class MapGen
 
     public function render(): string
     {
+        // The callers assemble this config from the nginx block plus the
+        // top-level tenants_root (the single source of truth: the map must
+        // point where the provisioner stamps). Fail loudly rather than
+        // render a half-empty root that nginx would happily serve.
+        $tenantsRoot = $this->config['tenants_root'] ?? null;
+        if (!is_string($tenantsRoot) || $tenantsRoot === '') {
+            throw new \InvalidArgumentException('MapGen config needs tenants_root (top-level config key)');
+        }
         $lines = ['map $http_host $tenant_root {', '    default ' . $this->config['empty_root'] . ';'];
         // The control plane's own host must be in the map, or /start and
         // /healthz land on the empty root.
         $lines[] = '    ' . $this->config['control_host'] . ' ' . $this->config['control_public_root'] . ';';
         foreach ($this->tenants->hostToSlug() as $host => $slug) {
-            $lines[] = '    ' . $host . ' ' . $this->config['tenants_root'] . '/' . $slug . '/public;';
+            $lines[] = '    ' . $host . ' ' . $tenantsRoot . '/' . $slug . '/public;';
         }
         foreach ($this->tenants->hostsByStatus('suspended') as $host) {
             $lines[] = '    ' . $host . ' ' . $this->config['control_public_root'] . ';';

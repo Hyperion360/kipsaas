@@ -111,7 +111,7 @@ return [
     ],
 __EXTRA__
     'grace_days' => 7, 'retention_days' => 30,
-    'nginx' => ['map_file' => __DIR__ . '/tenants.map', 'tenants_root' => __DIR__ . '/tenants', 'empty_root' => '/srv/e',
+    'nginx' => ['map_file' => __DIR__ . '/tenants.map', 'empty_root' => '/srv/e',
                 'control_public_root' => '/srv/c', 'control_host' => 'control.saas.example.test', 'reload' => false],
     'stripe_secret' => '',
     'stripe_webhook_secret' => 'whsec_test',

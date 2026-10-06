@@ -48,7 +48,7 @@ return [
     'tenant_app' => new SaasCliFixtureApp(),
     'mail' => ['transport' => 'log', 'log_path' => __DIR__ . '/data/mail.log', 'from' => 'noreply@saas.example.test'],
     'plans' => ['standard' => ['powered_by' => true]],
-    'nginx' => ['map_file' => __DIR__ . '/tenants.map', 'tenants_root' => __DIR__ . '/tenants', 'empty_root' => '/srv/e',
+    'nginx' => ['map_file' => __DIR__ . '/tenants.map', 'empty_root' => '/srv/e',
                 'control_public_root' => '/srv/c', 'control_host' => 'control.saas.example.test', 'reload' => false],
 ];
 PHP);
@@ -106,6 +106,16 @@ PHP);
         self::assertStringContainsString('suspended', $out);
         self::assertMatchesRegularExpression('/grace\.saas\.example\.test\s+standard routed/', $out);
         self::assertMatchesRegularExpression('/old\.saas\.example\.test\s+standard -/', $out);
+    }
+
+    public function test_map_write_routes_tenants_under_the_top_level_root(): void
+    {
+        // The fixture nginx block matches config.sample.php's shape (no
+        // tenants_root inside it): the top-level key is the single source
+        // of truth, and every tenant line must carry its full stamped root.
+        $this->saas('map:write');
+        $map = (string) file_get_contents($this->dir . '/tenants.map');
+        self::assertStringContainsString('grace.saas.example.test ' . $this->dir . '/tenants/grace/public;', $map);
     }
 
     public function test_purge_due_suspends_and_purges_and_republishes_the_map(): void

@@ -29,7 +29,7 @@ $provisioner = function () use ($config, $app): KipSaaS\ReferenceProvisioner {
         (new Kip\Mailer($config['mail']))->send($to, $subject, $body);
     }, $app());
 };
-$maps = fn(): KipSaaS\MapGen => new KipSaaS\MapGen($repo(), $config['nginx']);
+$maps = fn(): KipSaaS\MapGen => new KipSaaS\MapGen($repo(), ['tenants_root' => $config['tenants_root']] + $config['nginx']);
 
 $usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|doctor|version]\n";
 $command = $argv[1] ?? '';
