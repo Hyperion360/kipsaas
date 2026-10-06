@@ -324,6 +324,10 @@ PHP);
         [$status, $body] = $this->http(8092, 'POST', '/verify/claim', ['csrf' => 'x', 'token' => 'forged.token']);
         self::assertSame(503, $status);
         self::assertStringContainsString('paused', $body); // the smtp_missing error page, not a 403 claim rejection
+        // Operator self-help: the page names the exact keys to set and where
+        // the walkthrough lives, so a fresh install can fix itself.
+        self::assertStringContainsString('tenant_smtp', $body);
+        self::assertStringContainsString('STRIPE-TESTMODE', $body);
     }
 
     public function test_machine_routes_never_start_a_session(): void
