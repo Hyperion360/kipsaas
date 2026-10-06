@@ -19,11 +19,12 @@ Status: pre-v0.1.0. The engine and the demo are complete; the release tasks
 (public repo, Packagist listings, the version tag) are owner-gated and
 pending. Commands below run against this checkout as-is.
 
-Note on the framework constraint (kept from the previous README stub):
-composer.json requires `kip/framework: ^0.5@dev` against the Kip VCS
-repository because Kip has no release tags yet. Flipping the constraint to
-`^0.5.0` is gated on the Kip v0.5.0 tag and happens in the release task;
-that flip is the only change the gate waits on.
+Note on the framework constraint: composer.json requires
+`kip/framework: ^0.5.0`, resolved against Kip's public v0.5.0 tag. The
+VCS repository stanza it resolves through is the temporary part: until
+Kip is listed on Packagist, every composer.json that requires it (this
+one and yours) must carry the stanza, because Composer does not inherit
+repositories from dependencies.
 
 ## Who this is for and what the market looks like
 
@@ -166,7 +167,7 @@ Create your app's composer.json:
     "require": {
         "php": ">=8.3",
         "hyperion360/kipsaas": "*@dev",
-        "kip/framework": "^0.5@dev"
+        "kip/framework": "^0.5.0"
     },
     "repositories": [
         { "type": "vcs", "url": "https://github.com/Hyperion360/kipsaas" },
@@ -185,12 +186,14 @@ Resolution honesty, read this before it bites you:
   so until BOTH packages are listed on Packagist, your root composer.json
   must carry BOTH VCS stanzas. One stanza (just ours) fails resolution
   with "could not find kip/framework in any version".
-- `minimum-stability: dev` is required for the same reason: kipsaas has no
-  tagged release yet, so it resolves from the `main` branch (`*@dev`); kip
-  resolves through its declared `0.5.x-dev` branch alias (`^0.5@dev`).
-- When tags exist and both Packagist listings are live, the stanzas and
-  the dev stability go away and the constraints become `^0.1.0`
-  (kipsaas) and `^0.5.0` (kip). That switch is one commit in your repo.
+- `minimum-stability: dev` is required because kipsaas itself has no
+  tagged release yet, so it resolves from the `main` branch (`*@dev`).
+  `kip/framework ^0.5.0` resolves to the public v0.5.0 tag through its
+  stanza; `prefer-stable` keeps you off the dev branch.
+- When kipsaas is tagged and both Packagist listings are live, the stanzas
+  and the dev stability go away and its constraint becomes `^0.1.0`
+  (kip/framework is already `^0.5.0`). That switch is one commit in your
+  repo.
 
 Install, then lift the control surface into your app root (it is small,
 self-contained, and yours to brand):
