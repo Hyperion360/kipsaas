@@ -34,7 +34,9 @@ final class Signup
         } catch (\DomainException $e) {
             return ['status' => 'error', 'error' => $e->getMessage()];
         }
-        if (!isset($this->config['plans'][$plan])) {
+        // A plan with no price id is a manual-only tier: the form never
+        // offers it, so a value naming one is as wrong as an unknown key.
+        if (!isset($this->config['plans'][$plan]['price_id']) || $this->config['plans'][$plan]['price_id'] === '') {
             return ['status' => 'error', 'error' => 'Pick a plan.'];
         }
         if ($this->tenants->bySlug($slug) !== null) {
