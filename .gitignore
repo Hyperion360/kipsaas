@@ -10,3 +10,6 @@
 /demo/app/mail.log
 /demo/public/robots.txt
 /qa-full-reports/
+
+# the planning chain is workspace-private and never ships (kip/kiption convention)
+/docs/superpowers/
