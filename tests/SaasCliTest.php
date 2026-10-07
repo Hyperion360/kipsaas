@@ -47,7 +47,7 @@ return [
     'stripe_webhook_secret' => 'whsec_fixture',
     'tenant_app' => new SaasCliFixtureApp(),
     'mail' => ['transport' => 'log', 'log_path' => __DIR__ . '/data/mail.log', 'from' => 'noreply@saas.example.test'],
-    'plans' => ['standard' => ['powered_by' => true]],
+    'plans' => ['standard' => ['powered_by' => true], 'pro' => ['label' => 'Pro', 'custom_domains' => true]],
     'nginx' => ['map_file' => __DIR__ . '/tenants.map', 'empty_root' => '/srv/e',
                 'control_public_root' => '/srv/c', 'control_host' => 'control.saas.example.test', 'reload' => false],
 ];
@@ -120,6 +120,12 @@ PHP);
 
     public function test_purge_due_suspends_and_purges_and_republishes_the_map(): void
     {
+        // A live custom-domain claim on the tenant due for purge: closing
+        // the tenant must release it on this cron path (not only at the
+        // repository transition), or UNIQUE(domain) blocks reuse forever.
+        $seed = new Tenants((new Registry('sqlite:' . $this->dir . '/data/registry.sqlite'))->pdo());
+        $seed->pdo()->prepare('INSERT INTO tenant_domains (tenant_id, domain, status) VALUES (?, ?, ?)')
+            ->execute([(int) $seed->bySlug('old')['id'], 'old.example.com', 'active']);
         $out = $this->saas('purge:due');
         self::assertStringContainsString('purged old', $out);
         self::assertStringContainsString('suspended lapsed', $out);
@@ -131,11 +137,51 @@ PHP);
         self::assertSame('past_due', $tenants->bySlug('grace')['status']);
         self::assertSame('suspended', $tenants->bySlug('lapsed')['status']);
         self::assertNotNull($tenants->bySlug('lapsed')['purge_after']);
+        self::assertSame('0', (string) $seed->pdo()->query('SELECT COUNT(*) FROM tenant_domains')->fetchColumn(),
+            'the closed tenant must leave no domain claim behind');
         $map = (string) file_get_contents($this->dir . '/tenants.map');
         self::assertStringNotContainsString('old.saas.example.test', $map);  // closed: dropped from routing
+        self::assertStringNotContainsString('old.example.com', $map);        // its domain too
         self::assertStringContainsString('grace.saas.example.test', $map);   // mid-grace: still routed
         self::assertStringContainsString('lapsed.saas.example.test /srv/c', $map); // suspended: notice root
         self::assertStringContainsString('control.saas.example.test', $map); // the control host always routes
+    }
+
+    public function test_domain_commands_round_trip(): void
+    {
+        $this->saas('tenant:create', 'acme', 'pro', 'a@e.test', 'Acme');
+        $out = $this->saas('domain:add', 'acme', 'Archive.Example.COM.');
+        self::assertStringContainsString('CNAME archive.example.com -> saas.example.test', $out,
+            'the runbook line must name the exact CNAME record');
+        self::assertStringContainsString('domain:verify archive.example.com', $out);
+        $out = $this->saas('domain:list');
+        self::assertMatchesRegularExpression('/archive\.example\.com\s+acme\s+pending/', $out);
+        $this->saas('map:write'); // publish with the claim still pending
+        $map = (string) file_get_contents($this->dir . '/tenants.map');
+        self::assertStringNotContainsString('archive.example.com', $map, 'a pending claim must not route');
+
+        $out = $this->saas('domain:verify', 'archive.example.com');
+        self::assertStringContainsString('verified archive.example.com', $out);
+        $map = (string) file_get_contents($this->dir . '/tenants.map');
+        self::assertStringContainsString('archive.example.com ' . $this->dir . '/tenants/acme/public;',
+            $map, 'the verified claim must route to the tenant root in the same run');
+
+        $this->saas('domain:remove', 'archive.example.com');
+        $out = $this->saas('domain:list');
+        self::assertStringNotContainsString('archive.example.com', $out);
+        $map = (string) file_get_contents($this->dir . '/tenants.map');
+        self::assertStringNotContainsString('archive.example.com', $map);
+    }
+
+    public function test_domain_add_refuses_a_plan_without_the_flag(): void
+    {
+        $this->saas('tenant:create', 'plain', 'standard', 'p@e.test', 'Plain');
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/bin/saas')
+            . ' domain:add plain plain.example.com 2>&1', $out, $code);
+        self::assertSame(1, $code);
+        self::assertStringContainsString('does not include custom domains', implode("\n", $out));
+        $pdo = (new Registry('sqlite:' . $this->dir . '/data/registry.sqlite'))->pdo();
+        self::assertSame('0', (string) $pdo->query('SELECT COUNT(*) FROM tenant_domains')->fetchColumn());
     }
 
     public function test_manual_invoice_path_creates_and_provisions(): void
