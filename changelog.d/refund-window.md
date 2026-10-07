@@ -1,0 +1,1 @@
+Fixed: the default pack publishes the 30-day windows the product decision locks (full refund in the first 30 days; site data kept 30 days after closure before deletion), replacing the stray 14-day copy, and the neutrality guard now also bans the fiction-archive vocabulary so audience positioning cannot re-enter the kit pack.
