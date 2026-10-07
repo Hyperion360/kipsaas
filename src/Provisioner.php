@@ -49,6 +49,7 @@ final class ReferenceProvisioner implements ProvisionerInterface
             $this->copySkeleton($this->config['code_source'], $dir);
             file_put_contents($dir . '/config.php', $this->renderConfig($tenant, $dir));
             chmod($dir . '/config.php', 0600);
+            $this->assertStampIntegrity($this->config['code_source'], $dir);
             $this->run($dir, 'migrate');
             $this->run($dir, $this->app->seedCommand());
             $oneTime = $this->app->createOwner($this->ownerDb($dir), $tenant);
@@ -167,6 +168,67 @@ final class ReferenceProvisioner implements ProvisionerInterface
             if ($rel === $ex || str_starts_with($rel, $ex . '/')) return true;
         }
         return false;
+    }
+
+    /**
+     * Stamp integrity gate, run before kip migrate consumes the stamp: the
+     * set of app/Features/<Name> directories and the migration file counts
+     * (per feature plus app/migrations) must equal code_source's. A stamp
+     * that lost part of the feature tree would otherwise migrate a partial
+     * schema and report success. Runs inside provision()'s try block, so a
+     * throw here deletes the half-built tenant and aborts the provisioning.
+     */
+    private function assertStampIntegrity(string $source, string $stamp): void
+    {
+        $srcFeatures = $this->featureDirs($source);
+        $stampFeatures = $this->featureDirs($stamp);
+        if ($srcFeatures !== $stampFeatures) {
+            $missing = array_diff($srcFeatures, $stampFeatures);
+            throw new \RuntimeException($missing !== []
+                ? 'stamp is missing app/Features/' . (string) reset($missing) . ' (' . count($missing) . ' of '
+                    . count($srcFeatures) . ' feature dirs)'
+                : 'stamp has unexpected app/Features/' . (string) reset(array_diff($stampFeatures, $srcFeatures)));
+        }
+        foreach ($srcFeatures as $feature) {
+            $this->assertMigrationCount(
+                $source . '/app/Features/' . $feature . '/migrations',
+                $stamp . '/app/Features/' . $feature . '/migrations',
+                "app/Features/{$feature}");
+        }
+        $this->assertMigrationCount($source . '/app/migrations', $stamp . '/app/migrations', 'app/migrations');
+    }
+
+    private function assertMigrationCount(string $sourceDir, string $stampDir, string $label): void
+    {
+        $src = $this->migrationFileCount($sourceDir);
+        $stamp = $this->migrationFileCount($stampDir);
+        if ($src !== $stamp) {
+            throw new \RuntimeException("stamp's {$label} has {$stamp} of {$src} migration files");
+        }
+    }
+
+    /** @return list<string> sorted names of the app/Features/<Name> dirs ([] when the app has no feature dir at all) */
+    private function featureDirs(string $root): array
+    {
+        $dir = $root . '/app/Features';
+        if (!is_dir($dir)) return [];
+        $names = [];
+        foreach (scandir($dir) ?: [] as $name) {
+            if ($name[0] !== '.' && is_dir($dir . '/' . $name)) $names[] = $name;
+        }
+        sort($names);
+        return $names;
+    }
+
+    /** Migration files directly inside a migrations dir (a missing dir counts as 0). */
+    private function migrationFileCount(string $dir): int
+    {
+        if (!is_dir($dir)) return 0;
+        $count = 0;
+        foreach (scandir($dir) ?: [] as $name) {
+            if (str_ends_with($name, '.php') && is_file($dir . '/' . $name)) $count++;
+        }
+        return $count;
     }
 
     private function renderConfig(array $tenant, string $dir): string
