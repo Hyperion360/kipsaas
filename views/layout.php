@@ -1,7 +1,13 @@
 <?php // views/layout.php - one shared shell; every page is plain HTML, zero JS
 $inner = basename($name);
+// Per-template override-first resolution (the kit layout must keep working
+// when the operator's view_dir overrides only some pages): view_dir wins,
+// the kit's own views dir is the fallback.
+$innerFile = is_file(($viewDir ?? '') . '/' . $inner)
+    ? $viewDir . '/' . $inner
+    : ($kitViews ?? __DIR__) . '/' . $inner;
 ob_start();
-require __DIR__ . '/' . $inner;
+require $innerFile;
 $content = (string) ob_get_clean();
 ?>
 <!doctype html>

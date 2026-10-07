@@ -391,6 +391,51 @@ PHP);
         self::assertStringContainsString('Brandtest', $body); // everything else is the pack's unchanged copy
     }
 
+    public function test_view_dir_overrides_one_page_template_and_the_rest_stay_kit(): void
+    {
+        // The view seam mirrors the framework's skin semantics: EVERY
+        // template resolves override-first in view_dir and falls back to the
+        // kit's own views on a miss, so an operator overrides a single page
+        // without lifting the whole directory. A view_dir holding only
+        // start.php must serve that page from the override and every other
+        // page (the layout included) from the kit.
+        $dir = $this->scratch();
+        mkdir($dir . '/data', 0777, true);
+        mkdir($dir . '/tenants', 0777, true);
+        mkdir($dir . '/views', 0777, true);
+        file_put_contents($dir . '/views/start.php', "<h1>Colony signup</h1>\n");
+        $this->writeConfig($dir, "    'view_dir' => " . var_export($dir . '/views', true) . ",\n");
+        $this->bootServer(8095, $dir . '/config.php');
+
+        [$status, $body] = $this->http(8095, 'GET', '/start');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('Colony signup', $body, 'the overridden page template must win');
+        self::assertStringNotContainsString('name="csrf"', $body, 'the kit template must lose on the overridden page');
+        self::assertStringContainsString('Brandtest', $body, 'the kit layout must still wrap the override (fallback)');
+        [$status, $body] = $this->http(8095, 'GET', '/start/pending');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('Check your email', $body, 'an unoverridden page must render the kit template');
+    }
+
+    public function test_view_dir_overrides_the_layout_alone_and_keeps_kit_pages(): void
+    {
+        // The layout is itself a template: an override of layout.php must
+        // wrap pages whose bodies still come from the kit.
+        $dir = $this->scratch();
+        mkdir($dir . '/data', 0777, true);
+        mkdir($dir . '/tenants', 0777, true);
+        mkdir($dir . '/views', 0777, true);
+        $layout = (string) file_get_contents(dirname(__DIR__) . '/views/layout.php');
+        file_put_contents($dir . '/views/layout.php', str_replace('</body>', "<p>SHELLMARK</p></body>", $layout));
+        $this->writeConfig($dir, "    'view_dir' => " . var_export($dir . '/views', true) . ",\n");
+        $this->bootServer(8095, $dir . '/config.php');
+
+        [$status, $body] = $this->http(8095, 'GET', '/start');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('SHELLMARK', $body, 'the overridden layout must win');
+        self::assertStringContainsString('Start your site', $body, 'the kit page template must fall back under the overridden layout');
+    }
+
     public function test_a_double_submitted_claim_starts_exactly_one_checkout(): void
     {
         // Two POSTs of one verify link race the same pending tenant. The

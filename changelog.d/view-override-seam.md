@@ -1,0 +1,1 @@
+Added: view_dir now resolves every control template override-first (the layout or any single page) and falls back to the package's own views, mirroring the framework's skin seam, so an operator overrides one page without lifting the whole directory.
