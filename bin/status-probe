@@ -1,0 +1,122 @@
+#!/usr/bin/env php
+<?php // bin/status-probe - probe every routed host's health and write the
+// status files the /status page reads. Standalone like bin/release: no
+// vendor autoload and no framework classes (the registry read is one query
+// against the kit's stable tenants table). Cron every 5 minutes.
+//
+// Usage: bin/status-probe [<config.php>]   (argv[1], else STATUS_CONFIG)
+// Writes: <status_file>          the public aggregate the /status route
+//                                renders ({generated_at, overall:{ok_pct,
+//                                checks}, hosts_down: <count>, last_incident});
+//         <status_file>.jsonl    the operator's per-check log (timestamp,
+//                                host, ok, ms), pruned to a 30-day window.
+// Host names live ONLY in the jsonl. The public file carries a COUNT, so
+// even a web-served aggregate cannot disclose the customer list.
+declare(strict_types=1);
+
+$configPath = $argv[1] ?? (getenv('STATUS_CONFIG') ?: '');
+if ($configPath === '' || !is_file($configPath)) {
+    fwrite(STDERR, "status-probe: no config (pass a path or set STATUS_CONFIG)\n");
+    exit(1);
+}
+$config = require $configPath;
+if (!is_array($config)) {
+    fwrite(STDERR, "status-probe: config at {$configPath} did not return an array\n");
+    exit(1);
+}
+$statusFile = (string) ($config['status_file'] ?? '');
+if ($statusFile === '') {
+    fwrite(STDERR, "status-probe: config key status_file is not set\n");
+    exit(1);
+}
+$jsonlFile = preg_replace('/\.json$/', '', $statusFile) . '.jsonl';
+$urlTemplate = (string) ($config['status_probe_url'] ?? 'https://{host}/healthz');
+$controlHost = (string) ($config['nginx']['control_host'] ?? '');
+$cutoff = time() - 30 * 86400;
+$now = time();
+
+// Hosts: every active tenant plus the control plane itself, deduped so a
+// tenant squatting the control host cannot double-count.
+$hosts = [];
+$dsn = (string) ($config['registry_dsn'] ?? '');
+if ($dsn !== '') {
+    $pdo = new \PDO($dsn, null, null, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+    $rows = $pdo->query("SELECT host FROM tenants WHERE status = 'active' ORDER BY host")
+        ->fetchAll(\PDO::FETCH_COLUMN);
+    foreach ($rows as $host) $hosts[] = (string) $host;
+}
+if ($controlHost !== '') $hosts[] = $controlHost;
+$hosts = array_values(array_unique($hosts));
+
+// The slow part (the network) runs WITHOUT the lock, so overlapping crons
+// only ever contend for the fast file section below.
+$results = [];
+foreach ($hosts as $host) {
+    $started = microtime(true);
+    $status = 0;
+    $http_response_header = null; // a failed fetch keeps the previous fetch's headers otherwise
+    $ctx = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 5, 'ignore_errors' => true]]);
+    @file_get_contents(str_replace('{host}', $host, $urlTemplate), false, $ctx);
+    foreach ($http_response_header ?? [] as $header) {
+        if (preg_match('#^HTTP/\S+\s+(\d{3})#', (string) $header, $m)) $status = (int) $m[1];
+    }
+    $results[] = ['ts' => gmdate('Y-m-d\TH:i:s\Z', $now), 'host' => $host, 'ok' => $status === 200,
+        'ms' => (int) round((microtime(true) - $started) * 1000)];
+}
+
+// One exclusive flock covers read, prune, append, and rewrite: two
+// overlapping crons serialize instead of interleaving half-written lines,
+// and the public aggregate never races the log rewrite. A torn trailing
+// line from a killed writer parses to nothing and is dropped by the rewrite.
+$dir = dirname($jsonlFile);
+if (!is_dir($dir)) @mkdir($dir, 0777, true);
+$fp = @fopen($jsonlFile, 'c+');
+if ($fp === false) {
+    fwrite(STDERR, "status-probe: cannot open {$jsonlFile}\n");
+    exit(1);
+}
+try {
+    flock($fp, LOCK_EX);
+    $kept = [];
+    foreach (explode("\n", (string) stream_get_contents($fp)) as $line) {
+        $line = trim($line);
+        if ($line === '') continue;
+        $row = json_decode($line, true);
+        if (!is_array($row) || !isset($row['ts'], $row['host'], $row['ok']) || !is_string($row['ts'])) continue;
+        if (strtotime($row['ts']) >= $cutoff) $kept[] = $row;
+    }
+    $all = array_merge($kept, $results);
+    rewind($fp);
+    ftruncate($fp, 0);
+    foreach ($all as $row) fwrite($fp, json_encode($row, JSON_UNESCAPED_SLASHES) . "\n");
+    fflush($fp);
+    flock($fp, LOCK_UN);
+} finally {
+    fclose($fp);
+}
+
+usort($all, fn(array $a, array $b): int => strcmp((string) $a['ts'], (string) $b['ts']));
+$checks = count($all);
+$okChecks = count(array_filter($all, fn(array $r): bool => $r['ok'] === true));
+$latest = []; // timestamps sorted: the last line per host is its newest check
+foreach ($all as $row) $latest[(string) $row['host']] = $row;
+$hostsDown = count(array_filter($latest, fn(array $r): bool => $r['ok'] === false));
+$lastIncident = null;
+foreach ($all as $row) {
+    if ($row['ok'] === false) $lastIncident = (string) $row['ts'];
+}
+// With zero checks on record the aggregate stays empty: the /status page
+// then renders its honest no-data state instead of a fake 100%.
+$aggregate = [
+    'generated_at' => gmdate('Y-m-d\TH:i:s\Z', $now),
+    'overall' => ['ok_pct' => $checks > 0 ? round($okChecks / $checks * 100, 2) : null, 'checks' => $checks],
+    'hosts_down' => $hostsDown,
+    'last_incident' => $lastIncident,
+];
+$tmp = $statusFile . '.tmp' . getmypid();
+file_put_contents($tmp, json_encode($aggregate, JSON_UNESCAPED_SLASHES) . "\n");
+rename($tmp, $statusFile); // atomic: the public page never reads a half-written aggregate
+
+$down = count(array_filter($results, fn(array $r): bool => $r['ok'] === false));
+echo 'probed ' . count($results) . ' hosts: ' . (count($results) - $down) . ' ok, ' . $down . " down\n";
+exit(0);

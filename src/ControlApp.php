@@ -256,16 +256,23 @@ final class ControlApp
                     $raw = @file_get_contents($statusFile);
                     if (is_string($raw)) {
                         $data = json_decode($raw, true);
+                        $down = $data['hosts_down'] ?? null;
                         if (is_array($data)
                             && is_array($data['overall'] ?? null)
                             && is_numeric($data['overall']['ok_pct'] ?? null)
-                            && is_array($data['hosts_down'] ?? null)) {
-                            $downHosts = array_values(array_filter($data['hosts_down'], 'is_string'));
+                            && (is_array($down) || is_int($down))) {
+                            // Two producers feed this file: the kit's probe
+                            // writes a COUNT (its public file never carries
+                            // host names); an operator-side aggregator may
+                            // write the host list instead. Neither shape
+                            // renders a name: a host is a customer slug and
+                            // this page is public.
                             $status = [
                                 'ok_pct' => min(100.0, max(0.0, (float) $data['overall']['ok_pct'])),
                                 'checks' => (int) ($data['overall']['checks'] ?? 0),
                                 'last_incident' => is_string($data['last_incident'] ?? null) ? $data['last_incident'] : null,
-                                'degraded' => $downHosts !== [],
+                                'checked_at' => is_string($data['generated_at'] ?? null) ? $data['generated_at'] : null,
+                                'degraded' => is_int($down) ? $down > 0 : array_values(array_filter($down, 'is_string')) !== [],
                             ];
                         }
                     }

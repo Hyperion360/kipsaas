@@ -27,5 +27,5 @@ return [
                 'reload' => false],
     'stripe_secret' => getenv('SAAS_STRIPE_SECRET') ?: '',
     'stripe_webhook_secret' => getenv('SAAS_STRIPE_WEBHOOK_SECRET') ?: '',
-    'status_file' => __DIR__ . '/data/status.json', // written by the operator's probe cron, read-only here
+    'status_file' => __DIR__ . '/data/status.json', // the public aggregate bin/status-probe rewrites (cron it every 5 minutes); the operator's per-host log lands beside it as <status_file>.jsonl, and status_probe_url overrides the probed URL template (default https://{host}/healthz, for local testing only)
 ];
