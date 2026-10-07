@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-07
+
+### Added
+- suite coverage for the domain CLI on the real command surface (claim with the exact CNAME line, pending stays unrouted, verify routes in the same run, remove), the plan-gate refusal for Standard, and proof that purge:due releases a closed tenant's domain claim.
+- bin/status-probe, a standalone health probe (cron every 5 minutes) that checks each active tenant host plus the control plane, keeps the per-host log in an operator-only jsonl beside status_file under one exclusive flock (30-day prune, torn-line tolerant, idempotent re-runs), and rewrites the public aggregate with counters only, so the /status page never reads or renders a host name.
+- view_dir now resolves every control template override-first (the layout or any single page) and falls back to the package's own views, mirroring the framework's skin seam, so an operator overrides one page without lifting the whole directory.
+
+### Fixed
+- the default pack publishes the 30-day windows the product decision locks (full refund in the first 30 days; site data kept 30 days after closure before deletion), replacing the stray 14-day copy, and the neutrality guard now also bans the fiction-archive vocabulary so audience positioning cannot re-enter the kit pack.
+
 ## [0.1.2] - 2026-10-07
 
 ### Added
