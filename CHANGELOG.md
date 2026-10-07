@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-07
+
+### Added
+- manual white-glove custom domains (tenant_domains registry table, DomainService claim/verify workflow, domain:add/verify/remove/list CLI arms, nginx map emission for live and suspended tenants, domain release on close) and the plan column is now an editable tenant field
+- the control app's trust surface: terms, privacy, acceptable-use, refund, and migration pages plus the aggregate /status board (state, 30-day uptime, checks, last incident; a missing or invalid aggregate is a friendly no-data page at 200, and host names never render because a host is a customer slug), footer links to all of them with a support line, a custom-domain pricing-table row keyed on a per-plan flag, refund and export notes plus a migration callout on the signup page, the status_file config key, and the neutral lang pack strings behind every new line of copy.
+
 ## [0.1.1] - 2026-10-07
 
 ### Added

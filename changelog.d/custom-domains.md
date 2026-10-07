@@ -1,1 +1,0 @@
-Added: manual white-glove custom domains (tenant_domains registry table, DomainService claim/verify workflow, domain:add/verify/remove/list CLI arms, nginx map emission for live and suspended tenants, domain release on close) and the plan column is now an editable tenant field
