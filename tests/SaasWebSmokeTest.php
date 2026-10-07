@@ -318,6 +318,26 @@ PHP);
         self::assertStringNotContainsString('acme', $body);
     }
 
+    public function test_status_page_accepts_the_probe_count_shape(): void
+    {
+        // The kit probe's aggregate carries hosts_down as a COUNT (its
+        // public file never carries host names) plus generated_at; the
+        // reader accepts the count beside the operator's list shape, and
+        // the checked-at line renders.
+        file_put_contents($this->dir . '/data/status.json', (string) json_encode([
+            'generated_at' => '2026-10-07T06:10:00Z',
+            'overall' => ['ok_pct' => 98.9, 'checks' => 8640],
+            'last_incident' => null,
+            'hosts_down' => 2,
+        ]));
+        [$status, $body] = $this->http(8097, 'GET', '/status');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('Degraded', $body);
+        self::assertStringContainsString('98.90%', $body);
+        self::assertStringContainsString('Checked: 2026-10-07T06:10:00Z', $body);
+        self::assertStringNotContainsString('Last incident:', $body);
+    }
+
     public function test_status_page_without_data_is_a_friendly_200(): void
     {
         // No file yet (the operator's probe has not run once): the no-data
@@ -405,14 +425,14 @@ PHP);
         mkdir($dir . '/views', 0777, true);
         file_put_contents($dir . '/views/start.php', "<h1>Colony signup</h1>\n");
         $this->writeConfig($dir, "    'view_dir' => " . var_export($dir . '/views', true) . ",\n");
-        $this->bootServer(8095, $dir . '/config.php');
+        $this->bootServer(8127, $dir . '/config.php');
 
-        [$status, $body] = $this->http(8095, 'GET', '/start');
+        [$status, $body] = $this->http(8127, 'GET', '/start');
         self::assertSame(200, $status);
         self::assertStringContainsString('Colony signup', $body, 'the overridden page template must win');
         self::assertStringNotContainsString('name="csrf"', $body, 'the kit template must lose on the overridden page');
         self::assertStringContainsString('Brandtest', $body, 'the kit layout must still wrap the override (fallback)');
-        [$status, $body] = $this->http(8095, 'GET', '/start/pending');
+        [$status, $body] = $this->http(8127, 'GET', '/start/pending');
         self::assertSame(200, $status);
         self::assertStringContainsString('Check your email', $body, 'an unoverridden page must render the kit template');
     }
@@ -428,9 +448,9 @@ PHP);
         $layout = (string) file_get_contents(dirname(__DIR__) . '/views/layout.php');
         file_put_contents($dir . '/views/layout.php', str_replace('</body>', "<p>SHELLMARK</p></body>", $layout));
         $this->writeConfig($dir, "    'view_dir' => " . var_export($dir . '/views', true) . ",\n");
-        $this->bootServer(8095, $dir . '/config.php');
+        $this->bootServer(8127, $dir . '/config.php');
 
-        [$status, $body] = $this->http(8095, 'GET', '/start');
+        [$status, $body] = $this->http(8127, 'GET', '/start');
         self::assertSame(200, $status);
         self::assertStringContainsString('SHELLMARK', $body, 'the overridden layout must win');
         self::assertStringContainsString('Start your site', $body, 'the kit page template must fall back under the overridden layout');

@@ -58,6 +58,7 @@ return [
     'status_state_down' => 'Degraded: one or more sites are unreachable. The operator is working on it.',
     'status_uptime_label' => '30-day uptime: %s%%',
     'status_checks_label' => 'Checks monitored: %s',
+    'status_checked_label' => 'Checked: %s',
     'status_last_incident' => 'Last incident: %s',
     'status_external' => 'Minute-by-minute measurements are published on the external monitor: https://status.example.com',
     'migration_heading' => 'Moving your site to us',
