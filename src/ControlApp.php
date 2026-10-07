@@ -228,6 +228,43 @@ final class ControlApp
             if ($hostTenant !== null && $hostTenant['status'] === 'suspended') {
                 $view('suspended.php', ['title' => (string) $hostTenant['title'], 'name' => (string) $hostTenant['title']]);
             }
+            // The trust surface: static policy pages (terms, privacy, aup,
+            // refund, migration) plus the aggregate status board. These arms
+            // sit after the suspended fallthrough on purpose: a suspended
+            // tenant's host answers the suspension notice for every path,
+            // /terms included, before any public page is served.
+            if (in_array($path, ['/terms', '/privacy', '/aup', '/refund', '/migration'], true) && $method === 'GET') {
+                $view(basename($path) . '.php', ['title' => $lang[basename($path) . '_heading']]);
+            }
+            // The status aggregate is written by the operator's external
+            // probe; the kit only reads it. A missing, unreadable, or invalid
+            // file is the friendly no-data page at 200, never a 500. Only
+            // counters and a degraded boolean reach the view: a host name is
+            // a customer slug, and the public page must not disclose the
+            // customer list.
+            if ($path === '/status' && $method === 'GET') {
+                $status = null;
+                $statusFile = (string) ($config['status_file'] ?? '');
+                if ($statusFile !== '') {
+                    $raw = @file_get_contents($statusFile);
+                    if (is_string($raw)) {
+                        $data = json_decode($raw, true);
+                        if (is_array($data)
+                            && is_array($data['overall'] ?? null)
+                            && is_numeric($data['overall']['ok_pct'] ?? null)
+                            && is_array($data['hosts_down'] ?? null)) {
+                            $downHosts = array_values(array_filter($data['hosts_down'], 'is_string'));
+                            $status = [
+                                'ok_pct' => min(100.0, max(0.0, (float) $data['overall']['ok_pct'])),
+                                'checks' => (int) ($data['overall']['checks'] ?? 0),
+                                'last_incident' => is_string($data['last_incident'] ?? null) ? $data['last_incident'] : null,
+                                'degraded' => $downHosts !== [],
+                            ];
+                        }
+                    }
+                }
+                $view('status.php', ['title' => $lang['status_heading'], 'status' => $status]);
+            }
             http_response_code(404);
             $view('error.php', ['title' => $lang['not_found_heading'], 'message' => $lang['not_found_body']]);
         } catch (\Throwable $e) {

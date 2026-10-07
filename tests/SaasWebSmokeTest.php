@@ -15,7 +15,11 @@ use PHPUnit\Framework\TestCase;
  * webhook driving a recording provisioner double and the map publish, the
  * suspended-host fallthrough, portal-by-email, plus the entry-seam pair
  * (an operator-owned lang pack via lang_dir, and manual-only plans with
- * no price hidden from the pricing page and refused at signup). Zero
+ * no price hidden from the pricing page and refused at signup), and the
+ * trust surface: policy pages and footer links, the aggregate /status
+ * board (percentage and state, never a host name; no-data and garbage
+ * JSON stay 200), the suspended-host notice winning /terms, the
+ * custom-domain pricing row, and the neutral-pack guard. Zero
  * external calls: the checkout redirect is engine-tested, the claim POST
  * is exercised on its no-Stripe error path, and the provisioner is a double.
  */
@@ -115,7 +119,7 @@ return [
     'provisioner' => new SaasWebRecordingProvisioner(__DIR__ . '/provisioner.log'),
     'plans' => [
         'standard' => ['price_id' => 'price_x', 'label' => 'Standard', 'amount_month' => 900, 'storage_gb' => 2, 'powered_by' => true],
-        'pro' => ['price_id' => 'price_y', 'label' => 'Pro', 'amount_month' => 1900, 'storage_gb' => 10, 'powered_by' => false],
+        'pro' => ['price_id' => 'price_y', 'label' => 'Pro', 'amount_month' => 1900, 'storage_gb' => 10, 'powered_by' => false, 'custom_domains' => true],
         'flagship' => ['price_id' => null, 'label' => 'Flagship', 'amount_month' => 0, 'storage_gb' => 2, 'powered_by' => true],
     ],
 __EXTRA__
@@ -124,6 +128,7 @@ __EXTRA__
                 'control_public_root' => '/srv/c', 'control_host' => 'control.saas.example.test', 'reload' => false],
     'stripe_secret' => '',
     'stripe_webhook_secret' => 'whsec_test',
+    'status_file' => __DIR__ . '/data/status.json',
 ];
 PHP);
         file_put_contents($dir . '/config.php', $config);
@@ -251,6 +256,117 @@ PHP);
         [$status, $body] = $this->http(8097, 'GET', '/nope');
         self::assertSame(404, $status);
         self::assertStringContainsString('Nothing lives at that address', $body);
+    }
+
+    public function test_trust_pages_answer_with_their_headings_and_footer_links(): void
+    {
+        // terms, privacy, aup, refund, migration: the heading key renders as
+        // the h1, the body key renders as paragraphs, and the footer links to
+        // every page plus the support sentence as plain text.
+        $headings = ['terms' => 'Terms of service', 'privacy' => 'Privacy',
+                     'aup' => 'Acceptable use', 'refund' => 'Refunds',
+                     'migration' => 'Moving your site to us'];
+        foreach ($headings as $page => $heading) {
+            [$status, $body] = $this->http(8097, 'GET', '/' . $page);
+            self::assertSame(200, $status, $page);
+            self::assertStringContainsString('<h1>' . htmlspecialchars($heading) . '</h1>', $body, $page);
+            self::assertGreaterThan(1, substr_count($body, '<p>'), "{$page}: body paragraphs missing");
+        }
+        [$status, $body] = $this->http(8097, 'GET', '/terms');
+        self::assertSame(200, $status);
+        foreach (['terms', 'privacy', 'aup', 'refund', 'status'] as $link) {
+            self::assertStringContainsString('href="/' . $link . '"', $body, "footer link to /{$link}");
+        }
+        self::assertStringContainsString('support@example.com', $body);
+        // the migration page closes with its call to action back into signup
+        [$status, $body] = $this->http(8097, 'GET', '/migration');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('href="/start"', $body);
+    }
+
+    public function test_status_page_renders_the_probe_aggregate_without_host_names(): void
+    {
+        // ok state: empty hosts_down, the uptime percentage, the checks
+        // count, and the last incident time all render.
+        file_put_contents($this->dir . '/data/status.json', (string) json_encode([
+            'generated_at' => '2026-10-07T06:00:00Z',
+            'overall' => ['ok_pct' => 99.4, 'checks' => 12],
+            'last_incident' => '2026-09-21T04:10:00Z',
+            'hosts_down' => [],
+        ]));
+        [$status, $body] = $this->http(8097, 'GET', '/status');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('All systems are operating normally.', $body);
+        self::assertStringContainsString('99.40%', $body);
+        self::assertStringContainsString('Checks monitored: 12', $body);
+        self::assertStringContainsString('Last incident: 2026-09-21T04:10:00Z', $body);
+
+        // degraded: a host in hosts_down flips the state line, and the host
+        // name itself must not appear anywhere: a host is a customer slug,
+        // and this page is public. A null last_incident omits the line.
+        file_put_contents($this->dir . '/data/status.json', (string) json_encode([
+            'generated_at' => '2026-10-07T06:05:00Z',
+            'overall' => ['ok_pct' => 91.2, 'checks' => 12],
+            'last_incident' => null,
+            'hosts_down' => ['acme.saas.example.test'],
+        ]));
+        [$status, $body] = $this->http(8097, 'GET', '/status');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('Degraded', $body);
+        self::assertStringNotContainsString('Last incident:', $body);
+        self::assertStringNotContainsString('acme.saas.example.test', $body, 'a host name from hosts_down leaked onto the public page');
+        self::assertStringNotContainsString('acme', $body);
+    }
+
+    public function test_status_page_without_data_is_a_friendly_200(): void
+    {
+        // No file yet (the operator's probe has not run once): the no-data
+        // state, still 200.
+        [$status, $body] = $this->http(8097, 'GET', '/status');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('No status data is available', $body);
+        self::assertStringNotContainsString('30-day uptime', $body);
+
+        // Garbage JSON is the same friendly page, never a 500.
+        file_put_contents($this->dir . '/data/status.json', '{not json');
+        [$status, $body] = $this->http(8097, 'GET', '/status');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('No status data is available', $body);
+    }
+
+    public function test_a_suspended_host_gets_the_notice_even_on_trust_pages(): void
+    {
+        // The trust arms sit after the suspended fallthrough on purpose: a
+        // suspended tenant's /terms answers the notice, not the policy.
+        [$status, $body] = $this->http(8097, 'GET', '/terms', [], ['Host: susp.saas.example.test']);
+        self::assertSame(200, $status);
+        self::assertStringContainsString('suspended', $body);
+        self::assertStringNotContainsString('Terms of service', $body);
+    }
+
+    public function test_the_kit_pack_stays_audience_neutral(): void
+    {
+        // The neutral pack must read as generic managed hosting: an adopter
+        // ships it without scrubbing audience residue out of the strings.
+        $pack = require dirname(__DIR__) . '/lang/en.php';
+        self::assertIsArray($pack);
+        foreach ($pack as $key => $value) {
+            foreach (['fiction', 'fanfic', 'efiction'] as $needle) {
+                self::assertStringNotContainsStringIgnoringCase($needle, $value, "lang key {$key}");
+            }
+        }
+    }
+
+    public function test_the_pricing_table_carries_the_custom_domain_row(): void
+    {
+        // The row mirrors the plan catalog exactly like the attribution row:
+        // standard (flag absent) reads no, pro (flag true) reads yes. The
+        // refund note and the migration callout ride the same page.
+        [$status, $body] = $this->http(8097, 'GET', '/start');
+        self::assertSame(200, $status);
+        self::assertStringContainsString('<td>Custom domain</td><td>no</td><td>yes</td>', $body);
+        self::assertStringContainsString('full refund on request', $body);
+        self::assertStringContainsString('href="/migration"', $body);
     }
 
     public function test_lang_dir_serves_an_operator_owned_pack(): void

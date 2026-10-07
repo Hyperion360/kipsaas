@@ -15,6 +15,6 @@ $content = (string) ob_get_clean();
 <body>
 <header><a href="<?= htmlspecialchars($brandUrl) ?>"><strong><?= htmlspecialchars($brand) ?></strong></a></header>
 <main><?= $content ?></main>
-<footer><a href="/start"><?= htmlspecialchars($L['footer_start']) ?></a></footer>
+<footer><a href="/start"><?= htmlspecialchars($L['footer_start']) ?></a> &middot; <a href="/terms"><?= htmlspecialchars($L['footer_terms']) ?></a> &middot; <a href="/privacy"><?= htmlspecialchars($L['footer_privacy']) ?></a> &middot; <a href="/aup"><?= htmlspecialchars($L['footer_aup']) ?></a> &middot; <a href="/refund"><?= htmlspecialchars($L['footer_refund']) ?></a> &middot; <a href="/status"><?= htmlspecialchars($L['footer_status']) ?></a> &middot; <?= htmlspecialchars($L['footer_support']) ?></footer>
 </body>
 </html>

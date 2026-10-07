@@ -7,3 +7,4 @@ label { display: block; margin: .75rem 0; }
 input, select { display: block; margin-top: .25rem; width: 100%; max-width: 22rem; }
 button { margin-top: 1rem; padding: .5rem 1rem; }
 .error { color: #8b0000; }
+.callout { border-left: 4px solid #ccc; padding-left: .75rem; }
