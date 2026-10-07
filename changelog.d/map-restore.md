@@ -1,1 +1,0 @@
-Fixed: when nginx -t rejects a freshly published map, MapGen now restores the previous map file (the old bytes are kept in memory before the rename) before throwing, so a failed reload never leaves a map nginx cannot load live.

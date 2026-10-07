@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-07
+
+### Added
+- a GitHub Actions workflow running the full PHPUnit suite on PHP 8.3 and 8.4 for every push and pull request (free on public repositories).
+- the demo ships a change-password flow at /auth/password (auth-gated GET form, POST verifies the current password and writes the new hash in one transaction; the session epoch rides the new hash so this session stays signed in and other sessions are revoked), and the README and STRIPE-TESTMODE hedge that said the demo password is standing now points at the form.
+- saas prune (deletes webhook event rows past their 90-day audit window and rate-limit rows whose window started more than a day ago), a prunable-rows line in doctor output, and the weekly prune line in DEPLOY.md's cron set.
+
+### Changed
+- the tenants:list transcripts in README and docs/STRIPE-TESTMODE.md show the command's real column layout, captured from an actual run against a scratch registry.
+- the /verify 503 page now names the exact tenant_smtp config keys to set (host, port, username, password, from) and points at docs/STRIPE-TESTMODE.md, instead of only telling the reader to email the operator.
+
+### Fixed
+- the claim is a single compare-and-swap (pending to verified, one winner), so a double-submitted verify link can no longer open two Stripe checkout sessions; a replayed link now gets a clean 303 to /start/pending instead of a 403, and the Stripe HTTP transport is bindable in config for tests.
+- when nginx -t rejects a freshly published map, MapGen now restores the previous map file (the old bytes are kept in memory before the rename) before throwing, so a failed reload never leaves a map nginx cannot load live.
+- the per-email signup bucket now burns only after input validation passes (the IP bucket stays first), so invalid submissions can no longer lock a real address out of signup.
+
 ## [0.1.0] - 2026-10-06
 
 ### Added
