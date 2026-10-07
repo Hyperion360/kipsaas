@@ -220,19 +220,45 @@ ssh user@vm 'chown -R saas:saas /srv/saas/control /srv/saas/app'
 `-L` matters if your dev install used composer path repositories
 (vendored symlinks would dangle on the VM; `-L` stamps real files).
 
+Assert the app artifact itself shipped complete before anything stamps
+from it: a partial `app/` tree (a truncated rsync, a disk that filled
+mid-copy) makes kip migrate build a partial schema and report success.
+Run this from the machine holding the checkout; it prints the drift and
+exits nonzero:
+
+```
+[ "$(ls ./app-checkout/app/Features | sort)" = "$(ssh user@vm 'ls /srv/saas/app/app/Features | sort')" ] \
+    && [ "$(find ./app-checkout/app/migrations ./app-checkout/app/Features/*/migrations -name '*.php' | grep -c .)" \
+         = "$(ssh user@vm 'find /srv/saas/app/app/migrations /srv/saas/app/app/Features/*/migrations -name "*.php" 2>/dev/null | grep -c .')" ] \
+    || { echo "DRIFT: the deployed app source lost app/Features dirs or migration files" >&2; exit 1; }
+```
+
 Existing tenants are copies and do not update themselves. Refresh them
 from the new app source locally on the VM (same excludes, plus never
 touch a tenant's config or data), run each tenant's migrations, then
-converge the map:
+converge the map. The refresh must keep each stamp complete, so
+`stamp_check` compares the tenant against `/srv/saas/app` after the
+rsync and aborts before migrate on any drift:
 
 ```
-ssh user@vm 'for t in /srv/saas/tenants/*/; do
+ssh user@vm 'stamp_check() {
+    src="$1"; dst="$2"
+    if [ "$(ls "$src/app/Features" 2>/dev/null | sort)" != "$(ls "$dst/app/Features" 2>/dev/null | sort)" ]; then
+      echo "stamp drift: app/Features differ between $src and $dst" >&2; return 1
+    fi
+    if [ "$(find "$src/app/migrations" "$src"/app/Features/*/migrations -name "*.php" 2>/dev/null | grep -c .)" \
+      != "$(find "$dst/app/migrations" "$dst"/app/Features/*/migrations -name "*.php" 2>/dev/null | grep -c .)" ]; then
+      echo "stamp drift: migration file counts differ between $src and $dst" >&2; return 1
+    fi
+  }
+  for t in /srv/saas/tenants/*/; do
     rsync -a --delete \
       --exclude "config.php" --exclude "app/data.sqlite*" --exclude "app/logs.sqlite*" \
       --exclude "app/cache.sqlite*" --exclude "app/backups/" --exclude "app/maintenance.lock" \
       --exclude "app/mail.log" --exclude "app/nav.json" \
       --exclude "public/cache/" --exclude "public/uploads/" --exclude "public/robots.txt" \
       /srv/saas/app/ "$t"
+    stamp_check /srv/saas/app "$t" || exit 1
     (cd "$t" && php bin/kip migrate)
     chown -R saas:saas "$t"
   done'
