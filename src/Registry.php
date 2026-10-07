@@ -56,6 +56,21 @@ final class Registry
             hits INTEGER NOT NULL,
             window_start INTEGER NOT NULL
         )');
+        // Custom-domain claims. 'pending' until the operator has confirmed
+        // the domain's DNS by hand; 'active' once the map should route it.
+        // UNIQUE(domain): one claim per hostname registry-wide, because the
+        // nginx map allows exactly one value per key. No cascade: tenants
+        // are never deleted, the close path releases the claim in Tenants.
+        $this->pdo->exec('CREATE TABLE IF NOT EXISTS tenant_domains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id INTEGER NOT NULL REFERENCES tenants (id),
+            domain TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT \'pending\' CHECK (status IN (\'pending\',\'active\')),
+            created_at TEXT NOT NULL DEFAULT (strftime(\'%Y-%m-%dT%H:%M:%fZ\', \'now\'))
+        )');
+        // Serves the close-path release and every per-tenant join; domain
+        // lookups ride the UNIQUE index SQLite builds for the constraint.
+        $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_tenant_domains_tenant ON tenant_domains (tenant_id)');
         // Index shapes matched to the repositories' real WHERE clauses. All
         // partial: each serves exactly one lookup family, stays small, and
         // never indexes the NULL dead weight the other rows carry. IF NOT

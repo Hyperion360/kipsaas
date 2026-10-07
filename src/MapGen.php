@@ -5,10 +5,11 @@ namespace KipSaaS;
 
 /**
  * Renders the nginx map from the registry: active and grace-period tenants
- * route to their own public dir, suspended tenants route to the control
- * plane's notice-serving root, everything else falls to the empty root.
- * Host values come from Slug-normalized slugs, so the map file cannot be
- * poisoned through the registry.
+ * route to their own public dir (subdomain and verified custom domain
+ * alike), suspended tenants route to the control plane's notice-serving
+ * root, everything else falls to the empty root. Host values come from
+ * Slug-normalized slugs, custom domains from DomainService's grammar, so
+ * the map file cannot be poisoned through the registry.
  */
 final class MapGen
 {
@@ -31,8 +32,14 @@ final class MapGen
         foreach ($this->tenants->hostToSlug() as $host => $slug) {
             $lines[] = '    ' . $host . ' ' . $tenantsRoot . '/' . $slug . '/public;';
         }
+        foreach ($this->tenants->domainToSlug() as $domain => $slug) {
+            $lines[] = '    ' . $domain . ' ' . $tenantsRoot . '/' . $slug . '/public;';
+        }
         foreach ($this->tenants->hostsByStatus('suspended') as $host) {
             $lines[] = '    ' . $host . ' ' . $this->config['control_public_root'] . ';';
+        }
+        foreach ($this->tenants->suspendedDomains() as $domain) {
+            $lines[] = '    ' . $domain . ' ' . $this->config['control_public_root'] . ';';
         }
         $lines[] = '}';
         return implode("\n", $lines) . "\n";

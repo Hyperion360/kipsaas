@@ -22,6 +22,14 @@ final class SaasMapGenTest extends TestCase
         $this->tenants->setStatus((int) $this->tenants->bySlug('bloc')['id'], 'verified');
         $this->tenants->setStatus((int) $this->tenants->bySlug('bloc')['id'], 'active');
         $this->tenants->setStatus((int) $this->tenants->bySlug('bloc')['id'], 'suspended', ['purge_after' => '2026-03-01T00:00:00Z']);
+        // Custom-domain claims: seeded directly because MapGen's unit under
+        // test is emission, not the claim workflow (SaasDomainServiceTest
+        // covers that). acme's is live, bloc's is live under a suspended
+        // tenant, and acme's pending claim must never reach the map.
+        $claim = $this->tenants->pdo()->prepare('INSERT INTO tenant_domains (tenant_id, domain, status) VALUES (?, ?, ?)');
+        $claim->execute([(int) $this->tenants->bySlug('acme')['id'], 'acme.example.com', 'active']);
+        $claim->execute([(int) $this->tenants->bySlug('bloc')['id'], 'bloc.example.net', 'active']);
+        $claim->execute([(int) $this->tenants->bySlug('acme')['id'], 'unverified.example.org', 'pending']);
     }
 
     public function test_renders_active_to_tenants_and_suspended_to_notice_root(): void
@@ -33,7 +41,9 @@ final class SaasMapGenTest extends TestCase
             . "    default /srv/saas/empty/public;\n"
             . "    control.saas.example.test /srv/saas/control/public;\n"
             . "    acme.saas.example.test /srv/saas/tenants/acme/public;\n"
+            . "    acme.example.com /srv/saas/tenants/acme/public;\n"
             . "    bloc.saas.example.test /srv/saas/control/public;\n"
+            . "    bloc.example.net /srv/saas/control/public;\n"
             . "}\n";
         self::assertSame($expected, $gen->render());
     }

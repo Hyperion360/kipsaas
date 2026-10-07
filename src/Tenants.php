@@ -15,7 +15,7 @@ final class Tenants
         'closed'    => [],
     ];
 
-    private const EDITABLE = ['status', 'verify_token_hash', 'verify_expires_at', 'stripe_customer_id',
+    private const EDITABLE = ['status', 'plan', 'verify_token_hash', 'verify_expires_at', 'stripe_customer_id',
         'stripe_subscription_id', 'grace_until', 'purge_after'];
 
     public function __construct(private \PDO $pdo) {}
@@ -72,6 +72,13 @@ final class Tenants
         $sets = implode(', ', array_map(fn(string $c): string => "{$c} = ?", array_keys($fields)));
         $q = $this->pdo->prepare("UPDATE tenants SET {$sets}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?");
         $q->execute([...array_values($fields), $id]);
+        if ($to === 'closed') {
+            // Tenants are never deleted (purge only flips status to closed),
+            // so the domain claim must be released here or UNIQUE(domain)
+            // blocks reuse of the domain forever; an FK cascade can never
+            // fire because no tenant row is ever deleted.
+            $this->pdo->prepare('DELETE FROM tenant_domains WHERE tenant_id = ?')->execute([$id]);
+        }
     }
 
     /**
@@ -120,6 +127,28 @@ final class Tenants
         $q = $this->pdo->prepare('SELECT host FROM tenants WHERE status = ? ORDER BY host');
         $q->execute([$status]);
         return array_column($q->fetchAll(\PDO::FETCH_ASSOC), 'host');
+    }
+
+    /** @return array<string,string> domain => slug for every ACTIVE custom-domain claim whose tenant is routed (active and grace-period); pending claims stay out of the map */
+    public function domainToSlug(): array
+    {
+        $q = $this->pdo->query("SELECT d.domain, t.slug FROM tenant_domains d
+            JOIN tenants t ON t.id = d.tenant_id
+            WHERE d.status = 'active' AND t.status IN ('active', 'past_due') ORDER BY d.domain");
+        $out = [];
+        foreach ($q->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $out[$r['domain']] = $r['slug'];
+        }
+        return $out;
+    }
+
+    /** @return string[] active custom domains of suspended tenants (notice page, same as their subdomain) */
+    public function suspendedDomains(): array
+    {
+        $q = $this->pdo->query("SELECT d.domain FROM tenant_domains d
+            JOIN tenants t ON t.id = d.tenant_id
+            WHERE d.status = 'active' AND t.status = 'suspended' ORDER BY d.domain");
+        return array_column($q->fetchAll(\PDO::FETCH_ASSOC), 'domain');
     }
 
     public function dueForSuspension(string $now): array

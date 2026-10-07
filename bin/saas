@@ -30,11 +30,12 @@ $provisioner = function () use ($config, $app): KipSaaS\ReferenceProvisioner {
     }, $app());
 };
 $maps = fn(): KipSaaS\MapGen => new KipSaaS\MapGen($repo(), ['tenants_root' => $config['tenants_root']] + $config['nginx']);
+$domains = fn(): KipSaaS\DomainService => new KipSaaS\DomainService($repo()->pdo(), $config);
 // The prune policy lives here, once: event rows past a 90-day audit window,
 // rate-limit rows whose fixed window started more than a day ago.
 $pruneCutoffs = fn(): array => [gmdate('Y-m-d\TH:i:s\Z', time() - 90 * 86400), time() - 86400];
 
-$usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|prune|doctor|version]\n";
+$usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|prune|doctor|version|domain:add <slug> <domain>|domain:verify <domain>|domain:remove <domain>|domain:list]\n";
 $command = $argv[1] ?? '';
 match ($command) {
     'map:write' => $maps()->publish(),
@@ -87,6 +88,57 @@ match ($command) {
             echo "SMTP is not configured for tenants, so no welcome mail was sent.\n";
             echo "One-time password for {$t['owner_email']}: {$result['one_time_password']}\n";
             echo "Hand it to the owner over a trusted channel; it stays the password until your app offers a change or reset flow.\n";
+        }
+    })(),
+    // Manual white-glove custom domains: claim, hand the owner their CNAME
+    // record, confirm DNS by hand per the runbook, then flip the claim live.
+    'domain:add' => (function () use ($repo, $domains, $config, $argv): void {
+        [$slug, $domain] = [$argv[2] ?? '', $argv[3] ?? ''];
+        if ($slug === '' || $domain === '') {
+            fwrite(STDERR, "saas: usage: saas domain:add <slug> <domain>\n");
+            exit(1);
+        }
+        $t = $repo()->bySlug($slug);
+        if ($t === null) {
+            fwrite(STDERR, "saas: no tenant '{$slug}'\n");
+            exit(1);
+        }
+        $result = $domains()->add($t, $domain);
+        if (($result['status'] ?? '') === 'error') {
+            fwrite(STDERR, 'saas: ' . $result['error'] . "\n");
+            exit(1);
+        }
+        echo "CNAME {$result['domain']} -> {$config['base_domain']}\n";
+        echo "dictate that record to the domain owner; once their DNS answers, run saas domain:verify {$result['domain']}\n";
+    })(),
+    'domain:verify' => (function () use ($domains, $maps, $argv): void {
+        $domain = $argv[2] ?? '';
+        if ($domain === '') {
+            fwrite(STDERR, "saas: usage: saas domain:verify <domain>\n");
+            exit(1);
+        }
+        $result = $domains()->verify($domain);
+        if ($result['status'] === 'error') {
+            fwrite(STDERR, 'saas: ' . $result['error'] . "\n");
+            exit(1);
+        }
+        $maps()->publish(); // routing follows the state change in the same run, or the domain sits on the empty root until the next cron sweep
+        echo "verified {$result['domain']}\n";
+    })(),
+    'domain:remove' => (function () use ($domains, $maps, $argv): void {
+        $domain = $argv[2] ?? '';
+        if ($domain === '') {
+            fwrite(STDERR, "saas: usage: saas domain:remove <domain>\n");
+            exit(1);
+        }
+        $domains()->remove($domain); // idempotent: removing an unclaimed domain is fine
+        $maps()->publish();
+        echo "removed " . strtolower(rtrim($domain, '.')) . "\n";
+    })(),
+    'domain:list' => (function () use ($domains): void {
+        printf("%-40s %-24s %-8s %s\n", 'domain', 'tenant', 'status', 'created');
+        foreach ($domains()->list() as $r) {
+            printf("%-40s %-24s %-8s %s\n", $r['domain'], $r['slug'], $r['status'], $r['created_at']);
         }
     })(),
     'purge:due' => (function () use ($repo, $provisioner, $maps, $config): void {

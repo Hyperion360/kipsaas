@@ -78,6 +78,17 @@ final class SaasRegistryTest extends TestCase
         self::assertSame(['acme', 'beta'], array_column($this->tenants->all(), 'slug'));
     }
 
+    public function test_plan_is_an_editable_column_but_identity_columns_still_are_not(): void
+    {
+        // A plan change (upgrade, comped pilot) is a supported repository
+        // edit; slug and host are identity and must stay raw-SQL-free.
+        $id = $this->tenant();
+        $this->tenants->update($id, ['plan' => 'pro']);
+        self::assertSame('pro', $this->tenants->byId($id)['plan']);
+        self::expectException(\InvalidArgumentException::class);
+        $this->tenants->update($id, ['slug' => 'hijack']);
+    }
+
     public function test_lookup_and_due_queries_hit_indexes_not_full_scans(): void
     {
         // The db-optimize standard as a test: every WHERE the repositories
