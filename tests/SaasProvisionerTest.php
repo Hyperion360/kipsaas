@@ -206,6 +206,62 @@ PHP);
         chmod($this->code . '/app/blocked.txt', 0644); // let teardown remove it
     }
 
+    public function test_a_stamp_that_loses_a_feature_dir_aborts_provisioning(): void
+    {
+        // The integrity gate: kip migrate must never consume a stamp that
+        // lost part of app/Features, because a partial artifact builds a
+        // partial schema and reports success. The sabotage simulates any
+        // post-copy loss of a feature dir: the fake source config.php runs
+        // mid-provision (renderConfig requires it to render the tenant
+        // config) and deletes one feature dir from the freshly stamped
+        // tenant, exactly the drift the gate exists to catch.
+        $code = $this->root . '/sabcode';
+        $this->makeFakeInstall($code);
+        mkdir($code . '/app/Features/Ghost/migrations', 0777, true);
+        file_put_contents($code . '/app/Features/Ghost/migrations/001_ghost.php', "<?php\n");
+        file_put_contents($code . '/app/Features/Ghost/Ghost.php', "<?php\n");
+        $ghost = $this->root . '/tenants/acme/app/Features/Ghost';
+        file_put_contents($code . '/config.php', "<?php\n"
+            . 'foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(' . var_export($ghost, true)
+            . ", FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as \$item) {\n"
+            . "    \$item->isDir() ? @rmdir(\$item->getPathname()) : @unlink(\$item->getPathname());\n"
+            . "}\n@rmdir(" . var_export($ghost, true) . ");\n"
+            . "return ['site_name' => 'Source', 'rate_limit' => ['auth' => ['max' => 10, 'window' => 60]], 'features' => ['news' => true]];\n");
+        try {
+            $this->provisioner(codeSource: $code)->provision($this->tenant());
+            self::fail('a stamp that lost a feature dir must abort provisioning');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('provisioning acme failed', $e->getMessage());
+            self::assertStringContainsString('app/Features/Ghost', $e->getMessage(), 'the failure must name the lost feature');
+        }
+        self::assertFileDoesNotExist($this->root . '/tenants/acme'); // cleaned up, a retry starts clean
+    }
+
+    public function test_a_stamp_that_loses_a_feature_migration_file_aborts_provisioning(): void
+    {
+        // The other half of the gate: the feature dir survives but its
+        // migration file is gone. The directory set matches, so the
+        // migration file count is what catches the drift; the schema would
+        // otherwise build short of the source's shape.
+        $code = $this->root . '/sabcode';
+        $this->makeFakeInstall($code);
+        mkdir($code . '/app/Features/Ghost/migrations', 0777, true);
+        file_put_contents($code . '/app/Features/Ghost/migrations/001_ghost.php', "<?php\n");
+        $ghostMigration = $this->root . '/tenants/acme/app/Features/Ghost/migrations/001_ghost.php';
+        file_put_contents($code . '/config.php', "<?php\n"
+            . '@unlink(' . var_export($ghostMigration, true) . ");\n"
+            . "return ['site_name' => 'Source', 'rate_limit' => ['auth' => ['max' => 10, 'window' => 60]], 'features' => ['news' => true]];\n");
+        try {
+            $this->provisioner(codeSource: $code)->provision($this->tenant());
+            self::fail('a stamp that lost a migration file must abort provisioning');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('provisioning acme failed', $e->getMessage());
+            self::assertStringContainsString('app/Features/Ghost', $e->getMessage(), 'the failure must name the feature that lost a migration');
+            self::assertStringContainsString('migration file', $e->getMessage());
+        }
+        self::assertFileDoesNotExist($this->root . '/tenants/acme');
+    }
+
     public function test_tenants_trust_forwarded_headers_only_when_the_operator_opts_in(): void
     {
         // Bare nginx (the kit's default topology) passes client-supplied
