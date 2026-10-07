@@ -9,7 +9,7 @@ return [
     'token_secret' => getenv('SAAS_TOKEN_SECRET') ?: '', // REQUIRED in prod; the front controller refuses to boot without it
     'lang' => 'en', // lang_dir/<code>.php carries every control-page string; drop in your own pack
     'lang_dir' => __DIR__ . '/lang', // your lang pack directory (package mode: the lifted copy at <app>/lang; template mode: the same directory)
-    'view_dir' => __DIR__ . '/views', // the control pages' layout directory (package mode: the lifted copy at <app>/views; omit either key to fall back to the package's own dirs)
+    'view_dir' => __DIR__ . '/views', // the control pages' templates; EVERY template resolves override-first here (layout or any single page) and falls back to the package's own views, so one overridden page needs no lifted copy
     'brand_name' => 'KipSaaS', // shown in the control pages' header and title
     'brand_url' => '/start', // where the brand links
     'mail' => ['transport' => 'log', 'log_path' => __DIR__ . '/data/mail.log', 'from' => 'noreply@saas.example.test'],

@@ -61,7 +61,8 @@ final class ControlApp
         // (package mode lifts views/ and lang/ into the app root); absent
         // both keys resolve to the package's own dirs, which is exactly
         // the same directory in template mode.
-        $viewDir = is_string($config['view_dir'] ?? null) ? $config['view_dir'] : dirname(__DIR__) . '/views';
+        $kitViews = dirname(__DIR__) . '/views';
+        $viewDir = is_string($config['view_dir'] ?? null) ? $config['view_dir'] : $kitViews;
         $langDir = is_string($config['lang_dir'] ?? null) ? $config['lang_dir'] : dirname(__DIR__) . '/lang';
         $langFile = $langDir . '/' . basename((string) ($config['lang'] ?? 'en')) . '.php';
         $lang = is_file($langFile) ? require $langFile : null;
@@ -86,11 +87,17 @@ final class ControlApp
             : new StreamStripeHttp((string) $config['stripe_secret']);
         $stripe = new StripeClient($stripeHttp, $config);
 
-        $view = function (string $name, array $vars = []) use ($config, $lang, $brand, $brandUrl, $viewDir): never {
+        $view = function (string $name, array $vars = []) use ($config, $lang, $brand, $brandUrl, $viewDir, $kitViews): never {
             extract($vars, EXTR_SKIP);
             $L = $lang;
             $plans = is_array($config['plans'] ?? null) ? $config['plans'] : [];
-            require $viewDir . '/layout.php';
+            // The framework View seam's skin semantics, mirrored: EVERY
+            // template (the layout and each page alike) resolves
+            // override-first in view_dir and falls back to the kit's own
+            // views on a miss, so an operator can override one page without
+            // lifting the whole directory.
+            $layoutFile = is_file($viewDir . '/layout.php') ? $viewDir . '/layout.php' : $kitViews . '/layout.php';
+            require $layoutFile;
             exit;
         };
 
