@@ -368,13 +368,20 @@ PHP);
     {
         // The neutral pack must read as generic managed hosting: an adopter
         // ships it without scrubbing audience residue out of the strings.
+        // The markers are the audience's own vocabulary (fiction archives),
+        // which generic hosting copy has no reason to use.
         $pack = require dirname(__DIR__) . '/lang/en.php';
         self::assertIsArray($pack);
         foreach ($pack as $key => $value) {
-            foreach (['fiction', 'fanfic', 'efiction'] as $needle) {
+            foreach (['fiction', 'fanfic', 'efiction', 'fanfiction', 'story', 'stories', 'wattpad', 'ao3'] as $needle) {
                 self::assertStringNotContainsStringIgnoringCase($needle, $value, "lang key {$key}");
             }
         }
+        // The locked product decision, pinned in the neutral pack: the
+        // refund window is a published 30-day number, and the retention
+        // window after closure is 30 days.
+        self::assertStringContainsString('The first 30 days', $pack['refund_body']);
+        self::assertStringContainsString('30-day retention window', $pack['terms_body']);
     }
 
     public function test_the_pricing_table_carries_the_custom_domain_row(): void
