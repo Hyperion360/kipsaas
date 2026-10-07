@@ -1,1 +1,0 @@
-Added: suite coverage for the domain CLI on the real command surface (claim with the exact CNAME line, pending stays unrouted, verify routes in the same run, remove), the plan-gate refusal for Standard, and proof that purge:due releases a closed tenant's domain claim.
