@@ -317,16 +317,30 @@ nothing more.
   `tenants:list` cover operations; a metrics dashboard is not
   billing-critical.
 
-## AI-context files
+## Built for AI-agent development
+
+This kit is meant to be built and maintained by coding agents as much as
+by people, and the agent surface ships as part of the product.
 
 `AGENTS.md` and `CLAUDE.md` sit at the repo root and are committed: they
 are a product feature, not private tooling. A coding agent dropped into
-this repo gets from them the repo layout, the engine-vs-demo boundary (the
-engine never carries app-specific code; the demo is replaceable), the
-porting leak guard, the exact test command, the house writing style, and
-the release process (changelog fragments, nobody hand-edits CHANGELOG.md).
-`CLAUDE.md` just points at `AGENTS.md` so Claude-specific tooling lands in
-the same place.
+this repo gets from them the repo layout, the engine-vs-demo boundary
+(the engine never carries app-specific code; the demo is replaceable),
+the porting leak guard, the exact test command, the house writing style,
+and the release process (changelog fragments, nobody hand-edits
+CHANGELOG.md). `CLAUDE.md` just points at `AGENTS.md` so Claude-specific
+tooling lands in the same place. Around them: every operator surface has
+a CLI arm (`bin/saas`) so an agent never has to scrape HTML to act,
+every UI string lives in a lang pack, and the test suite is the safety
+net under every change.
+
+For the workflow itself, development runs on superskills
+(https://github.com/ariadoss/superskills), a curated open-source skill
+set for AI-driven development: a written plan with an engineering review
+before code, one subagent per task during execution, and a full QA gate
+before anything lands. That is the pipeline that built this kit. Point
+an agent at `AGENTS.md` plus the superskills repo and it can take a
+feature from plan to a shipped changelog fragment.
 
 ## Docs
 
