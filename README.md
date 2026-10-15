@@ -15,9 +15,11 @@ template (this repo IS a working demo SaaS you can strip and rename).
 Product of Hyperion360 Inc (https://hyperion360.com/), written and
 maintained by Danilo Stern-Sapad (https://danilosapad.com/).
 
-Status: pre-v0.1.0. The engine and the demo are complete; the release tasks
-(public repo, Packagist listings, the version tag) are owner-gated and
-pending. Commands below run against this checkout as-is.
+Status: released and public; CHANGELOG.md is the version record. The
+engine and the demo are complete. The one remaining owner-gated release
+task is the Packagist listings (this package and kip/framework): until
+both exist, the quickstart's VCS repository stanzas are required.
+Commands below run against this checkout as-is.
 
 Note on the framework constraint: composer.json requires
 `kip/framework: ^0.5.0`, resolved against Kip's public v0.5.0 tag. The
@@ -170,15 +172,13 @@ Create your app's composer.json:
     "name": "yourname/yourapp",
     "require": {
         "php": ">=8.3",
-        "hyperion360/kipsaas": "*@dev",
+        "hyperion360/kipsaas": "^0.1.3",
         "kip/framework": "^0.5.0"
     },
     "repositories": [
         { "type": "vcs", "url": "https://github.com/Hyperion360/kipsaas" },
         { "type": "vcs", "url": "https://github.com/Hyperion360/kip" }
     ],
-    "minimum-stability": "dev",
-    "prefer-stable": true,
     "autoload": { "psr-4": { "App\\": "src/" } }
 }
 ```
@@ -190,25 +190,25 @@ Resolution honesty, read this before it bites you:
   so until BOTH packages are listed on Packagist, your root composer.json
   must carry BOTH VCS stanzas. One stanza (just ours) fails resolution
   with "could not find kip/framework in any version".
-- `minimum-stability: dev` is required because kipsaas itself has no
-  tagged release yet, so it resolves from the `main` branch (`*@dev`).
-  `kip/framework ^0.5.0` resolves to the public v0.5.0 tag through its
-  stanza; `prefer-stable` keeps you off the dev branch.
-- When kipsaas is tagged and both Packagist listings are live, the stanzas
-  and the dev stability go away and its constraint becomes `^0.1.0`
-  (kip/framework is already `^0.5.0`). That switch is one commit in your
-  repo.
+- `hyperion360/kipsaas` resolves from its tagged releases through the
+  stanza (`^0.1.3` at the time of writing); no `minimum-stability: dev`
+  is needed anymore. That setting was only required before the first tag
+  existed. `kip/framework ^0.5.0` likewise resolves to the public v0.5.0
+  tag through its stanza.
+- When both Packagist listings are live, the two stanzas go away and the
+  constraints stay (`^0.1.0` and up, `^0.5.0`). That switch is one commit
+  in your repo.
 
 Install, then lift the control surface into your app root (it is small,
 self-contained, and yours to brand):
 
 ```
 composer install
-cp -R vendor/hyper360/kipsaas/public public
-cp -R vendor/hyper360/kipsaas/views views
-cp -R vendor/hyper360/kipsaas/lang lang
-mkdir -p bin && cp vendor/hyper360/kipsaas/bin/saas bin/saas && chmod +x bin/saas
-cp vendor/hyper360/kipsaas/config.sample.php config.php
+cp -R vendor/hyperion360/kipsaas/public public
+cp -R vendor/hyperion360/kipsaas/views views
+cp -R vendor/hyperion360/kipsaas/lang lang
+mkdir -p bin && cp vendor/hyperion360/kipsaas/bin/saas bin/saas && chmod +x bin/saas
+cp vendor/hyperion360/kipsaas/config.sample.php config.php
 mkdir -p data
 ```
 
