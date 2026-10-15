@@ -1,6 +1,18 @@
 {
     "name": "hyperion360/kipsaas",
     "description": "Open-source SaaS starter kit for the Kip framework: multi-tenant subscriptions with production-hardened Stripe billing. Zero build step, SQLite-first.",
+    "keywords": ["saas", "starter-kit", "multi-tenant", "subscription", "billing", "stripe", "php", "sqlite", "kip"],
+    "homepage": "https://github.com/Hyperion360/kipsaas",
+    "support": {
+        "issues": "https://github.com/Hyperion360/kipsaas/issues",
+        "source": "https://github.com/Hyperion360/kipsaas"
+    },
+    "authors": [
+        {
+            "name": "Danilo Stern-Sapad",
+            "homepage": "https://danilosapad.com/"
+        }
+    ],
     "license": "MIT",
     "repositories": [
         {

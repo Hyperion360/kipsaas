@@ -1,0 +1,1 @@
+Changed: composer.json carries the public-listing metadata (keywords, homepage, issue-tracker and source support links, maintainer author), validated by composer validate with the lock file verified still in sync
