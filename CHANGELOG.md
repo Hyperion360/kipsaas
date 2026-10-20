@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-20
+
+### Added
+- a Built for AI-agent development section in the README that replaces the bare AI-context-files note: the committed AGENTS.md/CLAUDE.md context, the CLI-first operator surface and lang packs that let an agent act without scraping HTML, and the superskills workflow (written plan, engineering review, one subagent per task, QA gate) as the pipeline that built the kit
+- the reference provisioner asserts stamp integrity before kip migrate consumes a stamp (every app/Features directory and every migration file the code source has must be in the stamp; on drift provisioning aborts and removes the half-built tenant, naming the lost feature), and DEPLOY.md gains the same feature-set and migration-count check for operators to run against the deployed app artifact and inside the per-tenant refresh loop
+
+### Changed
+- composer.json carries the public-listing metadata (keywords, homepage, issue-tracker and source support links, maintainer author), validated by composer validate with the lock file verified still in sync
+- the README matches the released repo: the status paragraph states the repo is public with CHANGELOG.md as the version record and names the two Packagist listings as the one remaining owner-gated task (was: pre-v0.1.0), the package-mode quickstart requires the tagged releases (^0.1.3) instead of *@dev with minimum-stability dev (both were only correct before the first tag), and the lift instructions copy from vendor/hyperion360 (was: vendor/hyper360, which does not exist)
+
+### Fixed
+- the README's ShipFast-vulnerabilities citation points at the writeup's live URL under /blog/ (the old link 404'd), keeping the trust claim in the market table checkable
+
 ## [0.1.3] - 2026-10-07
 
 ### Added

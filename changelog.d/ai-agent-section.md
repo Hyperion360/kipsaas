@@ -1,1 +1,0 @@
-Added: a Built for AI-agent development section in the README that replaces the bare AI-context-files note: the committed AGENTS.md/CLAUDE.md context, the CLI-first operator surface and lang packs that let an agent act without scraping HTML, and the superskills workflow (written plan, engineering review, one subagent per task, QA gate) as the pipeline that built the kit
