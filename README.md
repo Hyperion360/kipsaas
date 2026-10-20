@@ -16,17 +16,17 @@ Product of Hyperion360 Inc (https://hyperion360.com/), written and
 maintained by Danilo Stern-Sapad (https://danilosapad.com/).
 
 Status: released and public; CHANGELOG.md is the version record. The
-engine and the demo are complete. The one remaining owner-gated release
-task is the Packagist listings (this package and kip/framework): until
-both exist, the quickstart's VCS repository stanzas are required.
-Commands below run against this checkout as-is.
+engine and the demo are complete, and both this package and
+kip/framework are listed on Packagist, so a plain composer require
+resolves with no repository configuration. Commands below run against
+this checkout as-is.
 
 Note on the framework constraint: composer.json requires
-`kip/framework: ^0.5.0`, resolved against Kip's public v0.5.0 tag. The
-VCS repository stanza it resolves through is the temporary part: until
-Kip is listed on Packagist, every composer.json that requires it (this
-one and yours) must carry the stanza, because Composer does not inherit
-repositories from dependencies.
+`kip/framework: ^0.5.0`, resolved from Kip's Packagist listing
+(https://packagist.org/packages/kip/framework). Before that listing
+existed, every composer.json requiring it had to carry a VCS repository
+stanza, because Composer does not inherit repositories from
+dependencies; that requirement is retired.
 
 ## Who this is for and what the market looks like
 
@@ -165,39 +165,31 @@ delete-list when you start your real app:
 This is the updateable mode and how production consumers use the engine.
 Your app is your own package/repo; the engine arrives as a dependency.
 
-Create your app's composer.json:
+Create your app's composer.json (the engine is listed on Packagist as
+[hyperion360/kipsaas](https://packagist.org/packages/hyperion360/kipsaas);
+no `repositories` block is needed):
 
 ```json
 {
     "name": "yourname/yourapp",
     "require": {
         "php": ">=8.3",
-        "hyperion360/kipsaas": "^0.1.3",
+        "hyperion360/kipsaas": "^0.1.4",
         "kip/framework": "^0.5.0"
     },
-    "repositories": [
-        { "type": "vcs", "url": "https://github.com/Hyperion360/kipsaas" },
-        { "type": "vcs", "url": "https://github.com/Hyperion360/kip" }
-    ],
     "autoload": { "psr-4": { "App\\": "src/" } }
 }
 ```
 
-Resolution honesty, read this before it bites you:
-
-- Composer does NOT inherit `repositories` from a dependency's
-  composer.json. `hyperion360/kipsaas` itself requires `kip/framework`,
-  so until BOTH packages are listed on Packagist, your root composer.json
-  must carry BOTH VCS stanzas. One stanza (just ours) fails resolution
-  with "could not find kip/framework in any version".
-- `hyperion360/kipsaas` resolves from its tagged releases through the
-  stanza (`^0.1.3` at the time of writing); no `minimum-stability: dev`
-  is needed anymore. That setting was only required before the first tag
-  existed. `kip/framework ^0.5.0` likewise resolves to the public v0.5.0
-  tag through its stanza.
-- When both Packagist listings are live, the two stanzas go away and the
-  constraints stay (`^0.1.0` and up, `^0.5.0`). That switch is one commit
-  in your repo.
+Resolution honesty: both `hyperion360/kipsaas` and `kip/framework` are
+listed on Packagist, so the block above resolves with no
+`repositories` configuration at all (verified: a clean project with
+`composer require hyperion360/kipsaas` installs kipsaas v0.1.4 and
+kip/framework v0.5.0). Composer does not inherit repositories from
+dependencies, which only mattered in the pre-Packagist era when each
+consumer had to carry the two VCS stanzas itself. Constraints resolve
+from tagged releases (`^0.1.0` and up, `^0.5.0`); no
+`minimum-stability: dev` is needed.
 
 Install, then lift the control surface into your app root (it is small,
 self-contained, and yours to brand):
