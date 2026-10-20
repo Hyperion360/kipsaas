@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "cdf9503353b4ffabe8e6026c950dd440",
+    "content-hash": "2c5949bbdbdafec9f42edd23cdd692a4",
     "packages": [
         {
             "name": "kip/framework",
@@ -1844,9 +1844,9 @@
         }
     ],
     "aliases": [],
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "stability-flags": {},
-    "prefer-stable": true,
+    "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
         "php": ">=8.3"

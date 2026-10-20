@@ -14,12 +14,6 @@
         }
     ],
     "license": "MIT",
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/Hyperion360/kip"
-        }
-    ],
     "require": {
         "php": ">=8.3",
         "kip/framework": "^0.5.0"
@@ -41,8 +35,6 @@
             "KipSaaS\\Tests\\": "tests/"
         }
     },
-    "minimum-stability": "dev",
-    "prefer-stable": true,
     "config": {
         "optimize-autoloader": true
     }
