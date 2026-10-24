@@ -31,11 +31,13 @@ subscriptions with production-hardened Stripe billing.
 
 - Full gate before reporting done:
   `PATH="/opt/homebrew/bin:$PATH" composer check`
-  (the default `php` on this machine is 5.6; the Homebrew one is required).
+  (if the `php` on your PATH is older than 8.3, prepend a newer PHP's bin
+  directory to PATH).
   In KipSaaS the suite alone is
   `PATH="/opt/homebrew/bin:$PATH" vendor/bin/phpunit`.
 - Zero runtime dependencies (Kip: php + ext-pdo only), zero JavaScript, no
-  build step, every framework class final.
+  build step, every framework class final (the abstract Migration base
+  excepted).
 - No em dashes in any committed file. Operator voice, real numbers, no
   banned words (leverage, synergy, empower, revolutionize, supercharge,
   delve, unlock, elevate, seamless, robust).

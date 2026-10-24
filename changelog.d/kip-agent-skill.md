@@ -1,0 +1,1 @@
+Added: .claude/skills/kip/SKILL.md, the Kip/KipSaaS contract for coding agents (hard constraints, gate commands, port rules, writing style, phase protocol, ledger locations); the framework repo carries an identical copy and the two are kept in sync by hand
