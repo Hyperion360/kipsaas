@@ -35,6 +35,9 @@
             "KipSaaS\\Tests\\": "tests/"
         }
     },
+    "scripts": {
+        "check": "vendor/bin/phpunit"
+    },
     "config": {
         "optimize-autoloader": true
     }
