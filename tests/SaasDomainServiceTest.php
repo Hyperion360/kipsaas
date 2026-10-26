@@ -11,10 +11,12 @@ use KipSaaS\Tenants;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Manual white-glove custom domains: no TXT challenge, no pending TTL. The
- * operator confirms DNS by hand and flips the claim live, so the tests cover
- * exactly the operator surface: claim grammar, plan gate, collisions, the
- * verify flip, idempotent removal, and release on close.
+ * Custom domains, two surfaces. Manual white-glove: no TXT challenge, no
+ * pending TTL, the operator confirms DNS by hand and flips the claim live,
+ * so the tests cover the operator surface: claim grammar, plan gate,
+ * collisions, the verify flip, idempotent removal, and release on close.
+ * They also cover the Cloudflare-backed automation: claim register, verify,
+ * and remove, release on close, and the fail-closed refusals.
  */
 final class SaasDomainServiceTest extends TestCase
 {
