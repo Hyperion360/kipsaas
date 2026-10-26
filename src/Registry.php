@@ -56,18 +56,27 @@ final class Registry
             hits INTEGER NOT NULL,
             window_start INTEGER NOT NULL
         )');
-        // Custom-domain claims. 'pending' until the operator has confirmed
-        // the domain's DNS by hand; 'active' once the map should route it.
-        // UNIQUE(domain): one claim per hostname registry-wide, because the
-        // nginx map allows exactly one value per key. No cascade: tenants
-        // are never deleted, the close path releases the claim in Tenants.
+        // Custom-domain claims. 'pending' until verified, 'active' once the
+        // map should route it. UNIQUE(domain): one claim per hostname
+        // registry-wide, because the nginx map allows exactly one value per
+        // key. cf_hostname_id: the Cloudflare custom hostname backing the
+        // claim in CNAME mode, NULL for a manual (operator verified) claim.
+        // No cascade: tenants are never deleted, the close path releases the
+        // claim in Tenants.
         $this->pdo->exec('CREATE TABLE IF NOT EXISTS tenant_domains (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tenant_id INTEGER NOT NULL REFERENCES tenants (id),
             domain TEXT NOT NULL UNIQUE,
             status TEXT NOT NULL DEFAULT \'pending\' CHECK (status IN (\'pending\',\'active\')),
+            cf_hostname_id TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime(\'%Y-%m-%dT%H:%M:%fZ\', \'now\'))
         )');
+        // CREATE IF NOT EXISTS cannot evolve a live registry, so the column
+        // rides a guarded ALTER for every database that already exists.
+        $cols = $this->pdo->query('PRAGMA table_info(tenant_domains)')->fetchAll(\PDO::FETCH_COLUMN, 1);
+        if (!in_array('cf_hostname_id', $cols, true)) {
+            $this->pdo->exec('ALTER TABLE tenant_domains ADD COLUMN cf_hostname_id TEXT');
+        }
         // Serves the close-path release and every per-tenant join; domain
         // lookups ride the UNIQUE index SQLite builds for the constraint.
         $this->pdo->exec('CREATE INDEX IF NOT EXISTS idx_tenant_domains_tenant ON tenant_domains (tenant_id)');

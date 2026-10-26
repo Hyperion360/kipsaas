@@ -1,0 +1,1 @@
+Added: the registry carries cf_hostname_id on tenant_domains, the Cloudflare custom hostname behind a claim in CNAME mode, NULL for a manual claim; the column rides the CREATE TABLE for fresh registries and a guarded ALTER on open for every database that already exists, since CREATE IF NOT EXISTS cannot evolve a live table

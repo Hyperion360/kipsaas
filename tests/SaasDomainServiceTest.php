@@ -155,4 +155,20 @@ final class SaasDomainServiceTest extends TestCase
         self::assertSame(['alpha.example.com', 'zeta.example.net'], array_column($rows, 'domain'));
         self::assertSame(['acme', 'bloc'], array_column($rows, 'slug'));
     }
+
+    public function test_an_existing_registry_gains_the_cf_hostname_column_on_open(): void
+    {
+        $dsn = 'sqlite:' . sys_get_temp_dir() . '/domains-legacy-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $raw = new \PDO($dsn);
+        $raw->exec("CREATE TABLE tenant_domains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id INTEGER NOT NULL,
+            domain TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )"); // the pre-automation shape, live in every deployed registry
+        $pdo = (new Registry($dsn))->pdo(); // opening migrates
+        $cols = $pdo->query('PRAGMA table_info(tenant_domains)')->fetchAll(\PDO::FETCH_COLUMN, 1);
+        self::assertContains('cf_hostname_id', $cols);
+    }
 }
