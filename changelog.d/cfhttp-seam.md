@@ -1,0 +1,1 @@
+Added: src/CfHttp.php, the seam the custom-domains CNAME automation builds on (CfHttp interface, CfError, StreamCfHttp streams client for the Cloudflare client/v4 API), the same zero-dependency shape as StripeHttp; nothing consumes it yet, the CfClient task lands next
