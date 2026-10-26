@@ -148,9 +148,12 @@ final class DomainService
     /**
      * Drop a claim, retiring the Cloudflare object first (an object that
      * outlives its claim keeps an edge certificate alive for a hostname we
-     * no longer route). With a client wired, removing a domain nobody
-     * claimed is the orphan-cleanup path, still a success. Without one,
-     * removing an unclaimed domain stays the old idempotent no-op.
+     * no longer route). The mode is the row's: a CNAME-mode claim retires
+     * its object through the client, a manual claim skips the API entirely
+     * (cloudflare never saw it, so its removal must not depend on
+     * cloudflare's availability), and a domain nobody claimed is the
+     * orphan-cleanup path, still a success. Without a client, removing an
+     * unclaimed domain stays the old idempotent no-op.
      *
      * @return array{status: string, error?: string}
      */
@@ -163,7 +166,8 @@ final class DomainService
         if ($row !== false && $row['cf_hostname_id'] !== null && $this->cf === null) {
             return $this->err("{$d} is a CNAME-mode claim but no cloudflare client is configured; restore the cloudflare config first");
         }
-        if ($this->cf !== null) {
+        $retire = $this->cf !== null && ($row === false || $row['cf_hostname_id'] !== null);
+        if ($retire) {
             try {
                 $this->cf->delete($d);
             } catch (\RuntimeException $e) {

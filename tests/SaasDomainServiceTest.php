@@ -291,6 +291,19 @@ final class SaasDomainServiceTest extends TestCase
         self::assertSame([], $http->calls); // the mode is the row's, not the service's
     }
 
+    public function test_removing_a_manual_claim_under_automation_skips_the_cloudflare_call(): void
+    {
+        // The mode is the row's: a manual claim never registered with
+        // cloudflare must not have its removal gated on cloudflare's
+        // availability (verify() already reads the row the same way).
+        $http = new RecordingCfHttp([]);
+        $svc = $this->automated($http);
+        $svc->add($this->activeTenant('acme'), 'archive.example.com', true);
+        $r = $svc->remove('archive.example.com');
+        self::assertSame('removed', $r['status']);
+        self::assertSame([], $http->calls);
+    }
+
     public function test_automated_remove_retires_the_edge_object_first_and_fails_closed_on_error(): void
     {
         $acme = $this->activeTenant('acme');
