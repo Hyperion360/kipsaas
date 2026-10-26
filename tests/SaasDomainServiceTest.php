@@ -366,4 +366,18 @@ final class SaasDomainServiceTest extends TestCase
         self::assertStringContainsString('no cloudflare client', $r['error']);
         self::assertSame('pending', (string) $this->pdo->query("SELECT status FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
     }
+
+    public function test_a_cname_mode_claim_refuses_remove_when_the_client_is_unwired(): void
+    {
+        // The remove-side mirror of the pin above: without a client, a
+        // CNAME-mode claim must fail closed rather than degrade to the old
+        // no-op delete, or a config-lost operator's remove would release the
+        // claim while its edge certificate survives unreported.
+        $this->automated(new RecordingCfHttp($this->addScript('ch1')))
+            ->add($this->activeTenant('acme'), 'archive.example.com');
+        $r = $this->domains->remove('archive.example.com'); // setUp's service: no client
+        self::assertSame('error', $r['status']);
+        self::assertStringContainsString('no cloudflare client', $r['error']);
+        self::assertSame(1, (int) $this->pdo->query("SELECT COUNT(*) FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn()); // fail closed: the claim survives so the operator retries with config present
+    }
 }
