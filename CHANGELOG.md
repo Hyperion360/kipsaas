@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-26
+
+### Added
+- src/CfClient.php, the custom-hostnames API client (ensure/get/delete by hostname, fallback origin) behind the CfHttp seam, with the scripted RecordingCfHttp test double covering every payload and idempotency rule offline
+- src/CfHttp.php, the seam the custom-domains CNAME automation builds on (CfHttp interface, CfError, StreamCfHttp streams client for the Cloudflare client/v4 API), the same zero-dependency shape as StripeHttp
+- automated custom domains through Cloudflare for SaaS: a CfHttp/CfClient seam (custom hostnames ensure/get/delete plus fallback origin), CNAME-mode claims that register on add and flip live only when Cloudflare reports the hostname and certificate active, manual claims preserved via cf_hostname_id NULL and domain:add --manual, domain:fallback for the one-time zone setup, and close-path release that retires edge objects and reports refusals as warnings
+- automated custom domains through Cloudflare for SaaS: an add with the cloudflare client wired registers the custom hostname before the claim row is written and fails closed on any refusal, verify flips a claim live only when Cloudflare reports both the hostname and its certificate active, remove retires the edge object before dropping the row, and closing a tenant releases every claim while surfacing edge objects it could not retire as orphans
+- .claude/skills/kip/SKILL.md, the Kip/KipSaaS contract for coding agents (hard constraints, gate commands, port rules, writing style, phase protocol, ledger locations); the framework repo carries an identical copy and the two are kept in sync by hand
+- the registry carries cf_hostname_id on tenant_domains, the Cloudflare custom hostname behind a claim in CNAME mode, NULL for a manual claim; the column rides the CREATE TABLE for fresh registries and a guarded ALTER on open for every database that already exists, since CREATE IF NOT EXISTS cannot evolve a live table
+
+### Changed
+- hyperion360/kipsaas and kip/framework are listed on Packagist and the README reflects it: the package-mode composer block drops the two VCS repository stanzas (verified by a clean-project composer require installing kipsaas v0.1.4 and kip/framework v0.5.0 with no repositories configuration), the framework-constraint note and resolution-honesty section record the stanza era as retired, the quickstart constraint moves to ^0.1.4, and the status paragraph no longer names the listings as a pending gate
+
+### Fixed
+- the kit's composer.json defines the check script (vendor/bin/phpunit), so the full-gate command the kip agent skill names runs the suite in both repos instead of prefix-matching Composer's check-platform-reqs and exiting green without any tests
+- the kit's own composer.json drops the kip VCS repository stanza and the minimum-stability dev / prefer-stable pair, whose documented revisit trigger (the framework's Packagist listing) is now live; resolution is unchanged (lock hash refreshed, nothing to modify, suite green)
+- the control plane's suspension notice recognizes suspended tenants' custom domains through the same lookup as their primary hosts, so a mapped custom domain answers the notice instead of the control plane's default page
+
 ## [0.1.4] - 2026-10-20
 
 ### Added

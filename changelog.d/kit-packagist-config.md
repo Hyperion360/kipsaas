@@ -1,1 +1,0 @@
-Fixed: the kit's own composer.json drops the kip VCS repository stanza and the minimum-stability dev / prefer-stable pair, whose documented revisit trigger (the framework's Packagist listing) is now live; resolution is unchanged (lock hash refreshed, nothing to modify, suite green)

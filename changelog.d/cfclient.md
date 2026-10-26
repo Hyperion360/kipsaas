@@ -1,1 +1,0 @@
-Added: src/CfClient.php, the custom-hostnames API client (ensure/get/delete by hostname, fallback origin) behind the CfHttp seam, with the scripted RecordingCfHttp test double covering every payload and idempotency rule offline

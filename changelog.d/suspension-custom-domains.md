@@ -1,1 +1,0 @@
-Fixed: the control plane's suspension notice recognizes suspended tenants' custom domains through the same lookup as their primary hosts, so a mapped custom domain answers the notice instead of the control plane's default page

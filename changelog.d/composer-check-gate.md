@@ -1,1 +1,0 @@
-Fixed: the kit's composer.json defines the check script (vendor/bin/phpunit), so the full-gate command the kip agent skill names runs the suite in both repos instead of prefix-matching Composer's check-platform-reqs and exiting green without any tests
