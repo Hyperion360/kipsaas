@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace KipSaaS\Tests;
 
+use KipSaaS\CfClient;
+use KipSaaS\CfError;
 use KipSaaS\DomainService;
 use KipSaaS\Registry;
 use KipSaaS\Tenants;
@@ -19,20 +21,23 @@ final class SaasDomainServiceTest extends TestCase
     private \PDO $pdo;
     private Tenants $tenants;
     private DomainService $domains;
+    /** @var array<string,mixed> */
+    private array $config;
 
     protected function setUp(): void
     {
         $dsn = 'sqlite:' . sys_get_temp_dir() . '/domains-' . bin2hex(random_bytes(4)) . '.sqlite';
         $this->pdo = (new Registry($dsn))->pdo();
         $this->tenants = new Tenants($this->pdo);
-        $this->domains = new DomainService($this->pdo, [
+        $this->config = [
             'base_domain' => 'saas.example.test',
             'nginx' => ['control_host' => 'control.saas.example.test'],
             'plans' => [
                 'standard' => ['label' => 'Standard'],                       // no custom_domains flag
                 'pro' => ['label' => 'Pro', 'custom_domains' => true],
             ],
-        ]);
+        ];
+        $this->domains = new DomainService($this->pdo, $this->config);
     }
 
     /** A tenant row walked to active, on the given plan. */
@@ -170,5 +175,195 @@ final class SaasDomainServiceTest extends TestCase
         $pdo = (new Registry($dsn))->pdo(); // opening migrates
         $cols = $pdo->query('PRAGMA table_info(tenant_domains)')->fetchAll(\PDO::FETCH_COLUMN, 1);
         self::assertContains('cf_hostname_id', $cols);
+    }
+
+    /** DomainService in CNAME mode: a real CfClient over scripted responses. */
+    private function automated(RecordingCfHttp $http): DomainService
+    {
+        return new DomainService($this->pdo, $this->config, new CfClient($http, 'zone1'));
+    }
+
+    /** The queue pair one automated add consumes: the empty lookup, then the create. */
+    private function addScript(string $id): array
+    {
+        return [
+            ['success' => true, 'result' => []],
+            ['success' => true, 'result' => ['id' => $id, 'status' => 'pending', 'ssl' => ['status' => 'pending_validation']]],
+        ];
+    }
+
+    public function test_automated_add_registers_the_hostname_and_stores_its_id(): void
+    {
+        $http = new RecordingCfHttp($this->addScript('ch1'));
+        $r = $this->automated($http)->add($this->activeTenant('acme'), 'archive.example.com');
+        self::assertSame('added', $r['status']);
+        self::assertSame('ch1', $r['cf']);
+        $row = $this->pdo->query("SELECT status, cf_hostname_id FROM tenant_domains WHERE domain = 'archive.example.com'")->fetch(\PDO::FETCH_ASSOC);
+        self::assertSame('pending', $row['status']);
+        self::assertSame('ch1', $row['cf_hostname_id']);
+        self::assertSame(['hostname' => 'archive.example.com', 'ssl' => ['method' => 'http', 'type' => 'dv']], $http->calls[1]['json']);
+    }
+
+    public function test_a_refused_claim_makes_no_cloudflare_call(): void
+    {
+        // S1: the plan gate runs before anything touches the API, so a
+        // refused claim can never leave a custom-hostname object behind it.
+        $http = new RecordingCfHttp([]);
+        $r = $this->automated($http)->add($this->activeTenant('plain', 'standard'), 'plain.example.org');
+        self::assertSame('error', $r['status']);
+        self::assertSame([], $http->calls);
+    }
+
+    public function test_manual_add_leaves_the_claim_operator_verified(): void
+    {
+        $http = new RecordingCfHttp([]);
+        $r = $this->automated($http)->add($this->activeTenant('acme'), 'archive.example.com', true);
+        self::assertSame('added', $r['status']);
+        self::assertArrayNotHasKey('cf', $r);
+        self::assertSame([], $http->calls);
+        self::assertNull($this->pdo->query("SELECT cf_hostname_id FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
+    }
+
+    public function test_the_base_zone_apex_is_a_manual_claim(): void
+    {
+        // The apex IS the SaaS zone; its TLS is the zone's own. Flagship
+        // (the brand apex) still claims it, with --manual.
+        $http = new RecordingCfHttp([]);
+        $r = $this->automated($http)->add($this->activeTenant('acme'), 'saas.example.test');
+        self::assertSame('error', $r['status']);
+        self::assertStringContainsString('--manual', $r['error']);
+        self::assertSame([], $http->calls);
+        $r = $this->automated(new RecordingCfHttp())->add($this->activeTenant('flagship'), 'saas.example.test', true);
+        self::assertSame('added', $r['status']);
+    }
+
+    public function test_automated_verify_flips_only_when_hostname_and_certificate_are_both_active(): void
+    {
+        $this->automated(new RecordingCfHttp($this->addScript('ch1')))
+            ->add($this->activeTenant('acme'), 'archive.example.com');
+        $status = fn(): string => (string) $this->pdo->query("SELECT status FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn();
+
+        // GET responses arrive as a list even filtered to one row (the eng-review fixture fix)
+        $pending = ['success' => true, 'result' => [['id' => 'ch1', 'status' => 'pending', 'ssl' => ['status' => 'pending_validation']]]];
+        $certPending = ['success' => true, 'result' => [['id' => 'ch1', 'status' => 'active', 'ssl' => ['status' => 'pending_validation']]]];
+        $ready = ['success' => true, 'result' => [['id' => 'ch1', 'status' => 'active', 'ssl' => ['status' => 'active']]]];
+
+        // S2: DNS control is the proof. The certificate only issues once the
+        // customer's CNAME answers, so anything short of active plus active
+        // fails closed with the row still pending.
+        $r = $this->automated(new RecordingCfHttp([$pending]))->verify('archive.example.com');
+        self::assertSame('error', $r['status']);
+        self::assertSame('pending', $status());
+
+        $r = $this->automated(new RecordingCfHttp([$certPending]))->verify('archive.example.com');
+        self::assertSame('error', $r['status']);
+        self::assertStringContainsString('certificate', $r['error']);
+        self::assertSame('pending', $status());
+
+        $r = $this->automated(new RecordingCfHttp([$ready]))->verify('archive.example.com');
+        self::assertSame('verified', $r['status']);
+        self::assertSame('active', $status());
+    }
+
+    public function test_automated_verify_fails_closed_when_the_object_is_gone_or_the_api_errors(): void
+    {
+        $this->automated(new RecordingCfHttp($this->addScript('ch1')))
+            ->add($this->activeTenant('acme'), 'archive.example.com');
+
+        $r = $this->automated(new RecordingCfHttp([['success' => true, 'result' => []]]))->verify('archive.example.com');
+        self::assertSame('error', $r['status']);
+        self::assertStringContainsString('no custom hostname', $r['error']);
+
+        $r = $this->automated(new RecordingCfHttp([new CfError(500, 'boom')]))->verify('archive.example.com');
+        self::assertSame('error', $r['status']);
+        self::assertStringContainsString('cloudflare 500', $r['error']);
+        self::assertSame('pending', (string) $this->pdo->query("SELECT status FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
+    }
+
+    public function test_a_manual_claim_verifies_by_operator_confirmation_even_with_automation_configured(): void
+    {
+        $http = new RecordingCfHttp([]);
+        $svc = $this->automated($http);
+        $svc->add($this->activeTenant('acme'), 'archive.example.com', true);
+        self::assertSame('verified', $svc->verify('archive.example.com')['status']);
+        self::assertSame([], $http->calls); // the mode is the row's, not the service's
+    }
+
+    public function test_automated_remove_retires_the_edge_object_first_and_fails_closed_on_error(): void
+    {
+        $acme = $this->activeTenant('acme');
+        $created = ['success' => true, 'result' => ['id' => 'ch1', 'status' => 'active', 'ssl' => ['status' => 'active']]];
+        $listed = ['success' => true, 'result' => [['id' => 'ch1', 'status' => 'active', 'ssl' => ['status' => 'active']]]];
+
+        $this->automated(new RecordingCfHttp([['success' => true, 'result' => []], $created]))
+            ->add($acme, 'archive.example.com');
+
+        $ok = $this->automated(new RecordingCfHttp([$listed, ['success' => true, 'result' => ['id' => 'ch1']]]));
+        self::assertSame('removed', $ok->remove('archive.example.com')['status']);
+        self::assertSame(0, (int) $this->pdo->query("SELECT COUNT(*) FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
+
+        $this->automated(new RecordingCfHttp([['success' => true, 'result' => []], $created]))
+            ->add($acme, 'archive.example.com'); // claim it again for the failure half
+        // S3: Cloudflare first, registry second; the claim survives a
+        // refused delete so the operator retries rather than orphaning an
+        // edge certificate for a hostname we no longer route.
+        $r = $this->automated(new RecordingCfHttp([new CfError(500, 'boom')]))->remove('archive.example.com');
+        self::assertSame('error', $r['status']);
+        self::assertSame(1, (int) $this->pdo->query("SELECT COUNT(*) FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
+    }
+
+    public function test_remove_of_an_unknown_domain_still_retires_an_orphaned_edge_object(): void
+    {
+        $http = new RecordingCfHttp([
+            ['success' => true, 'result' => [['id' => 'ch1', 'status' => 'active', 'ssl' => ['status' => 'active']]]],
+            ['success' => true, 'result' => ['id' => 'ch1']],
+        ]);
+        $r = $this->automated($http)->remove('archive.example.com');
+        self::assertSame('removed', $r['status']);
+        self::assertSame('DELETE', $http->calls[1]['method']);
+    }
+
+    public function test_closing_releases_every_claim_and_collects_cloudflare_failures_as_warnings(): void
+    {
+        $acme = $this->activeTenant('acme');
+        $svc = $this->automated(new RecordingCfHttp([
+            ...$this->addScript('ch1'), ...$this->addScript('ch2'),
+        ]));
+        $svc->add($acme, 'one.example.com');
+        $svc->add($acme, 'two.example.com');
+
+        // S3: the registry release is authoritative and cannot be blocked by
+        // an API outage; the refusal comes back as a warning, and the runbook
+        // line it feeds (domain:remove) is the cleanup.
+        $rel = $this->automated(new RecordingCfHttp([
+            ['success' => true, 'result' => [['id' => 'ch1', 'status' => 'active', 'ssl' => ['status' => 'active']]]],
+            ['success' => true, 'result' => ['id' => 'ch1']], // one.example.com deletes fine
+            new CfError(500, 'boom'),                          // two.example.com refuses
+        ]))->removeForTenant((int) $acme['id']);
+        self::assertSame(2, $rel['released']);
+        self::assertSame(['two.example.com'], $rel['orphans']);
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM tenant_domains')->fetchColumn());
+
+        // R1 fold (eng review): automation unwired at close. The claim still
+        // releases, and its unretired edge object surfaces instead of
+        // vanishing silently.
+        $this->automated(new RecordingCfHttp($this->addScript('ch3')))
+            ->add($acme, 'three.example.com');
+        $rel = $this->domains->removeForTenant((int) $acme['id']); // setUp's service: no client wired
+        self::assertSame(['three.example.com'], $rel['orphans']);
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM tenant_domains')->fetchColumn());
+    }
+
+    public function test_a_cname_mode_claim_refuses_verify_when_the_client_is_unwired(): void
+    {
+        // Eng-review fold (F-S3): the row carries the mode, so an automated
+        // claim must never fall back to the operator-confirmation flip just
+        // because the service lost its client.
+        $this->automated(new RecordingCfHttp($this->addScript('ch1')))
+            ->add($this->activeTenant('acme'), 'archive.example.com');
+        $r = $this->domains->verify('archive.example.com'); // setUp's service: no client
+        self::assertSame('error', $r['status']);
+        self::assertStringContainsString('no cloudflare client', $r['error']);
+        self::assertSame('pending', (string) $this->pdo->query("SELECT status FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
     }
 }
