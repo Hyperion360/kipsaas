@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace KipSaaS\Tests;
 
+use KipSaaS\DomainService;
 use KipSaaS\Registry;
 use KipSaaS\Tenants;
 use KipSaaS\Version;
@@ -278,6 +279,50 @@ PHP);
         self::assertNull(Version::lockedRef($dir . '/missing.lock', 'kip/framework'));
         self::assertNull(Version::lockedRef($dir . '/tag.lock', 'some/other-package'));
         $this->rmTree($dir);
+    }
+
+    public function test_domain_add_manual_flag_keeps_the_operator_verified_flow(): void
+    {
+        $pdo = (new Registry('sqlite:' . $this->dir . '/data/registry.sqlite'))->pdo();
+        $tenants = new Tenants($pdo);
+        $id = $tenants->create('acme', 'acme.saas.example.test', 'pro', 'o@acme.test', 'Acme', '', '');
+        $tenants->setStatus($id, 'verified');
+        $tenants->setStatus($id, 'active');
+
+        $out = $this->saas('domain:add', 'acme', 'archive.example.com', '--manual');
+        self::assertStringContainsString('CNAME archive.example.com -> saas.example.test', $out);
+        self::assertStringContainsString('confirmed by hand', $out);
+        self::assertSame('pending', $pdo->query("SELECT status FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
+        self::assertNull($pdo->query("SELECT cf_hostname_id FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn());
+    }
+
+    public function test_domain_fallback_refuses_without_cloudflare_config(): void
+    {
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/bin/saas')
+            . ' domain:fallback 2>&1', $out, $code);
+        self::assertSame(1, $code);
+        self::assertStringContainsString('no cloudflare config', implode("\n", $out));
+    }
+
+    public function test_purge_releases_the_purged_tenants_domain_claims(): void
+    {
+        $pdo = (new Registry('sqlite:' . $this->dir . '/data/registry.sqlite'))->pdo();
+        $tenants = new Tenants($pdo);
+        $id = $tenants->create('acme', 'acme.saas.example.test', 'pro', 'o@acme.test', 'Acme', '', '');
+        $tenants->setStatus($id, 'verified');
+        $tenants->setStatus($id, 'active');
+        $tenants->setStatus($id, 'past_due', ['grace_until' => '2026-01-01T00:00:00Z']);
+        (new DomainService($pdo, ['base_domain' => 'saas.example.test',
+            'nginx' => ['control_host' => 'control.saas.example.test'],
+            'plans' => ['pro' => ['custom_domains' => true]]]))
+            ->add($tenants->byId($id), 'archive.example.com');
+
+        $this->saas('purge:due'); // grace expired: acme suspends
+        $tenants->update($id, ['purge_after' => '2026-01-05T00:00:00Z']);
+        $this->saas('purge:due'); // retention passed: acme closes
+
+        self::assertSame('closed', $tenants->byId($id)['status']);
+        self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM tenant_domains WHERE tenant_id = ' . $id)->fetchColumn());
     }
 
     protected function tearDown(): void

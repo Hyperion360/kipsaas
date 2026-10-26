@@ -30,12 +30,19 @@ $provisioner = function () use ($config, $app): KipSaaS\ReferenceProvisioner {
     }, $app());
 };
 $maps = fn(): KipSaaS\MapGen => new KipSaaS\MapGen($repo(), ['tenants_root' => $config['tenants_root']] + $config['nginx']);
-$domains = fn(): KipSaaS\DomainService => new KipSaaS\DomainService($repo()->pdo(), $config);
+// CNAME-mode custom domains (Cloudflare for SaaS): present config wires the
+// client and add defaults to registering the hostname; absent config keeps
+// manual mode, the operator-verified white-glove flow.
+$cf = isset($config['cloudflare']['api_token'], $config['cloudflare']['zone_id'])
+    && $config['cloudflare']['api_token'] !== '' && $config['cloudflare']['zone_id'] !== ''
+    ? new KipSaaS\CfClient(new KipSaaS\StreamCfHttp($config['cloudflare']['api_token']), $config['cloudflare']['zone_id'])
+    : null;
+$domains = fn(): KipSaaS\DomainService => new KipSaaS\DomainService($repo()->pdo(), $config, $cf);
 // The prune policy lives here, once: event rows past a 90-day audit window,
 // rate-limit rows whose fixed window started more than a day ago.
 $pruneCutoffs = fn(): array => [gmdate('Y-m-d\TH:i:s\Z', time() - 90 * 86400), time() - 86400];
 
-$usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|prune|doctor|version|domain:add <slug> <domain>|domain:verify <domain>|domain:remove <domain>|domain:list]\n";
+$usage = "Usage: saas [tenants:list|tenant:create <slug> <plan> <email> <title>|provision:tenant <slug>|map:write|purge:due|prune|doctor|version|domain:add <slug> <domain> [--manual]|domain:verify <domain>|domain:remove <domain>|domain:list|domain:fallback]\n";
 $command = $argv[1] ?? '';
 match ($command) {
     'map:write' => $maps()->publish(),
@@ -90,12 +97,14 @@ match ($command) {
             echo "Hand it to the owner over a trusted channel; it stays the password until your app offers a change or reset flow.\n";
         }
     })(),
-    // Manual white-glove custom domains: claim, hand the owner their CNAME
-    // record, confirm DNS by hand per the runbook, then flip the claim live.
+    // Custom domains: CNAME mode (the default with cloudflare config) registers
+    // the hostname and dictates the record the owner adds at THEIR DNS;
+    // --manual keeps the white-glove zone-transfer flow, operator verified.
     'domain:add' => (function () use ($repo, $domains, $config, $argv): void {
         [$slug, $domain] = [$argv[2] ?? '', $argv[3] ?? ''];
+        $manual = in_array('--manual', $argv, true);
         if ($slug === '' || $domain === '') {
-            fwrite(STDERR, "saas: usage: saas domain:add <slug> <domain>\n");
+            fwrite(STDERR, "saas: usage: saas domain:add <slug> <domain> [--manual]\n");
             exit(1);
         }
         $t = $repo()->bySlug($slug);
@@ -103,13 +112,18 @@ match ($command) {
             fwrite(STDERR, "saas: no tenant '{$slug}'\n");
             exit(1);
         }
-        $result = $domains()->add($t, $domain);
+        $result = $domains()->add($t, $domain, $manual);
         if (($result['status'] ?? '') === 'error') {
             fwrite(STDERR, 'saas: ' . $result['error'] . "\n");
             exit(1);
         }
-        echo "CNAME {$result['domain']} -> {$config['base_domain']}\n";
-        echo "dictate that record to the domain owner; once their DNS answers, run saas domain:verify {$result['domain']}\n";
+        if (isset($result['cf'])) {
+            echo "CNAME {$result['domain']} -> {$t['host']}\n";
+            echo "the owner adds that record at their DNS provider; the certificate issues automatically once it answers, then run saas domain:verify {$result['domain']}\n";
+        } else {
+            echo "CNAME {$result['domain']} -> {$config['base_domain']}\n";
+            echo "dictate that record to the domain owner; once their DNS answers and is confirmed by hand, run saas domain:verify {$result['domain']}\n";
+        }
     })(),
     'domain:verify' => (function () use ($domains, $maps, $argv): void {
         $domain = $argv[2] ?? '';
@@ -131,7 +145,11 @@ match ($command) {
             fwrite(STDERR, "saas: usage: saas domain:remove <domain>\n");
             exit(1);
         }
-        $domains()->remove($domain); // idempotent: removing an unclaimed domain is fine
+        $result = $domains()->remove($domain);
+        if ($result['status'] === 'error') {
+            fwrite(STDERR, 'saas: ' . $result['error'] . "\n");
+            exit(1);
+        }
         $maps()->publish();
         echo "removed " . strtolower(rtrim($domain, '.')) . "\n";
     })(),
@@ -141,7 +159,24 @@ match ($command) {
             printf("%-40s %-24s %-8s %s\n", $r['domain'], $r['slug'], $r['status'], $r['created_at']);
         }
     })(),
-    'purge:due' => (function () use ($repo, $provisioner, $maps, $config): void {
+    // One-time zone setup for CNAME-mode domains: designate the fallback
+    // origin (a proxied record in our zone) custom hostnames route to.
+    'domain:fallback' => (function () use ($cf, $config): void {
+        if ($cf === null) {
+            fwrite(STDERR, "saas: no cloudflare config (set cloudflare.api_token and zone_id in config.php for CNAME-mode domains)\n");
+            exit(1);
+        }
+        $origin = 'fallback.' . $config['base_domain'];
+        try {
+            $r = $cf->setFallbackOrigin($origin);
+        } catch (RuntimeException $e) {
+            fwrite(STDERR, 'saas: ' . $e->getMessage() . "\n");
+            exit(1);
+        }
+        printf("fallback origin %s (%s)\n", $origin, (string) ($r['result']['status'] ?? 'pending'));
+        echo "active once the record exists proxied in the zone; re-run to check\n";
+    })(),
+    'purge:due' => (function () use ($repo, $provisioner, $maps, $config, $domains): void {
         $now = gmdate('Y-m-d\TH:i:s\Z');
         $changed = false;
         foreach ($repo()->dueForSuspension($now) as $t) {
@@ -153,6 +188,10 @@ match ($command) {
         }
         foreach ($repo()->dueForPurge($now) as $t) {
             $provisioner()->purge($t);
+            $rel = $domains()->removeForTenant((int) $t['id']);
+            foreach ($rel['orphans'] as $orphan) {
+                echo "warning: cloudflare kept an object for {$orphan}; clean up with saas domain:remove {$orphan}\n";
+            }
             $repo()->setStatus((int) $t['id'], 'closed');
             echo "purged {$t['slug']}\n";
             $changed = true;
