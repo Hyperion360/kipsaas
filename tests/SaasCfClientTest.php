@@ -106,4 +106,21 @@ final class SaasCfClientTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $client->ensure('archive.example.com');
     }
+
+    public function test_get_refuses_a_list_row_without_an_id(): void
+    {
+        // F-S2 follow-up: the same refusal guards the adopt path. A success
+        // list whose row has no id must fail closed, or ensure() would return
+        // an empty id as a claim and delete() would fire a DELETE with one.
+        [$client] = $this->client([$this->listed(['status' => 'active'])]);
+        $this->expectException(\RuntimeException::class);
+        $client->get('archive.example.com');
+    }
+
+    public function test_get_refuses_a_list_row_that_is_not_an_array(): void
+    {
+        [$client] = $this->client([['success' => true, 'result' => ['garbage']]]);
+        $this->expectException(\RuntimeException::class);
+        $client->get('archive.example.com');
+    }
 }

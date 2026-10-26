@@ -44,7 +44,14 @@ final class CfClient
         $r = $this->http->request('GET', '/zones/' . $this->zoneId . '/custom_hostnames?hostname=' . rawurlencode($hostname));
         $rows = $r['result'] ?? [];
         if (!is_array($rows) || $rows === []) return null;
-        return $this->shape(is_array($rows[0] ?? null) ? $rows[0] : []);
+        $row = $this->shape(is_array($rows[0] ?? null) ? $rows[0] : []);
+        if ($row['id'] === '') {
+            // a success list whose first row carries no id is a malformed
+            // envelope; adopting it would store an empty id as an automated
+            // claim, and delete would fire a DELETE with nothing behind it
+            throw new \RuntimeException('cloudflare: malformed custom hostname row for ' . $hostname);
+        }
+        return $row;
     }
 
     /** Idempotent: deleting a hostname the zone does not have is a success no-op. */
