@@ -44,6 +44,24 @@ final class Tenants
         return $this->one('host', $host);
     }
 
+    /**
+     * A tenant row by primary host OR active custom-domain claim, while the
+     * tenant is suspended: the control root's suspension fallthrough needs
+     * both spellings (the nginx map routes a suspended tenant's custom
+     * domains there exactly like its subdomain, so recognition must not be
+     * host-column-only), and a tenant that is not suspended is never the
+     * control root's business.
+     */
+    public function byHostOrDomain(string $host): ?array
+    {
+        $q = $this->pdo->prepare("SELECT t.* FROM tenants t
+            LEFT JOIN tenant_domains d ON d.tenant_id = t.id
+            WHERE t.status = 'suspended' AND (t.host = ? OR (d.domain = ? AND d.status = 'active')) LIMIT 1");
+        $q->execute([$host, $host]);
+        $row = $q->fetch(\PDO::FETCH_ASSOC);
+        return $row === false ? null : $row;
+    }
+
     public function byTokenHash(string $hash): ?array
     {
         return $this->one('verify_token_hash', $hash);

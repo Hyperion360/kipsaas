@@ -225,13 +225,13 @@ final class ControlApp
             }
             if ($path === '/suspended' && $method === 'GET') {
                 // The reverse proxy routes suspended hosts here; the registry confirms before explaining.
-                $t = $tenants->byHost(strtolower((string) ($_SERVER['HTTP_HOST'] ?? '')));
+                $t = $tenants->byHostOrDomain(strtolower((string) ($_SERVER['HTTP_HOST'] ?? '')));
                 $name = (string) ($t['title'] ?? $lang['suspended_default_name']);
                 $view('suspended.php', ['title' => $name, 'name' => $name]);
             }
             // Default root visitors and suspended tenants whose homepage was requested
             // directly: the suspension notice must be the homepage's answer, not a 404.
-            $hostTenant = $tenants->byHost(strtolower((string) ($_SERVER['HTTP_HOST'] ?? '')));
+            $hostTenant = $tenants->byHostOrDomain(strtolower((string) ($_SERVER['HTTP_HOST'] ?? '')));
             if ($hostTenant !== null && $hostTenant['status'] === 'suspended') {
                 $view('suspended.php', ['title' => (string) $hostTenant['title'], 'name' => (string) $hostTenant['title']]);
             }

@@ -380,4 +380,21 @@ final class SaasDomainServiceTest extends TestCase
         self::assertStringContainsString('no cloudflare client', $r['error']);
         self::assertSame(1, (int) $this->pdo->query("SELECT COUNT(*) FROM tenant_domains WHERE domain = 'archive.example.com'")->fetchColumn()); // fail closed: the claim survives so the operator retries with config present
     }
+
+    public function test_a_suspended_tenants_custom_domain_finds_its_tenant_at_the_control_root(): void
+    {
+        $acme = $this->activeTenant('acme');
+        $svc = $this->domains; // manual mode is enough: the lookup is registry-side
+        $svc->add($acme, 'archive.example.com');
+        $svc->verify('archive.example.com');
+        self::assertNull($this->tenants->byHostOrDomain('archive.example.com')); // active tenant: not the control root's business yet
+        $this->tenants->setStatus((int) $acme['id'], 'past_due', ['grace_until' => '2026-02-01T00:00:00Z']);
+        $this->tenants->setStatus((int) $acme['id'], 'suspended', ['purge_after' => '2026-03-01T00:00:00Z']);
+        $found = $this->tenants->byHostOrDomain('archive.example.com');
+        self::assertNotNull($found);
+        self::assertSame('acme', $found['slug']);
+        self::assertSame('suspended', $found['status']);
+        self::assertSame('acme', $this->tenants->byHostOrDomain('acme.saas.example.test')['slug']); // primary hosts still match
+        self::assertNull($this->tenants->byHostOrDomain('nobody.example.org')); // unknown stays unknown
+    }
 }
