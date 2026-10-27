@@ -13,3 +13,6 @@
 
 # the planning chain is workspace-private and never ships (kip/kiption convention)
 /docs/superpowers/
+
+# private working memory (local-only)
+TODOS.md
