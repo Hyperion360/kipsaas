@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-13
+
+### Added
+- signup asks for the owner's pen name, stored as `owner_name` on the tenant row (empty for older rows).
+
 ## [0.2.0] - 2026-10-26
 
 ### Added
