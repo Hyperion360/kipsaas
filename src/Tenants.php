@@ -21,11 +21,11 @@ final class Tenants
     public function __construct(private \PDO $pdo) {}
 
     public function create(string $slug, string $host, string $plan, string $email, string $title,
-        string $tokenHash, string $tokenExpires): int
+        string $tokenHash, string $tokenExpires, string $ownerName = ''): int
     {
-        $q = $this->pdo->prepare('INSERT INTO tenants (slug, host, plan, title, owner_email, verify_token_hash, verify_expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)');
-        $q->execute([$slug, $host, $plan, $title, $email, $tokenHash, $tokenExpires]);
+        $q = $this->pdo->prepare('INSERT INTO tenants (slug, host, plan, title, owner_email, verify_token_hash, verify_expires_at, owner_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        $q->execute([$slug, $host, $plan, $title, $email, $tokenHash, $tokenExpires, $ownerName]);
         return (int) $this->pdo->lastInsertId();
     }
 

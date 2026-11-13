@@ -134,13 +134,14 @@ final class ControlApp
                 // header cannot be spoofed by bypassing the proxy.
                 $clientIp = (string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
                 $out = $signup->submit((string) ($_POST['email'] ?? ''), (string) ($_POST['title'] ?? ''),
-                    (string) ($_POST['plan'] ?? 'standard'), $clientIp);
+                    (string) ($_POST['plan'] ?? 'standard'), $clientIp, (string) ($_POST['owner_name'] ?? ''));
                 if ($out['status'] === 'pending') {
                     header('Location: /start/pending', true, 303);
                     exit;
                 }
                 http_response_code(422);
-                $view('start.php', ['error' => (string) ($out['error'] ?? 'Something went wrong.'), 'title' => $lang['start_heading']]);
+                $view('start.php', ['error' => (string) ($out['error'] ?? 'Something went wrong.'), 'title' => $lang['start_heading'],
+                    'owner_name' => (string) ($_POST['owner_name'] ?? '')]);
             }
             if ($path === '/start/pending' && $method === 'GET') {
                 $view('pending.php', ['title' => $lang['pending_heading']]);

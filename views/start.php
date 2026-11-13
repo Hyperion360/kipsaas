@@ -24,6 +24,8 @@ $buyable = array_filter($plans, fn($p) => !empty($p['price_id']));
 <form method="post" action="/start">
   <?= \KipSaaS\Csrf::field() ?>
   <label><?= htmlspecialchars($L['label_email']) ?> <input type="email" name="email" required></label>
+  <label><?= htmlspecialchars($L['label_owner_name']) ?> <input name="owner_name" required minlength="2" maxlength="40" autocomplete="nickname" value="<?= htmlspecialchars((string) ($owner_name ?? '')) ?>" title="<?= htmlspecialchars($L['error_owner_name']) ?>"></label>
+  <p class="hint"><?= htmlspecialchars($L['hint_owner_name']) ?></p>
   <label><?= htmlspecialchars($L['label_title']) ?> <input name="title" required pattern="[A-Za-z0-9 -]{3,63}" title="<?= htmlspecialchars($L['start_subdomain_note']) ?>"></label>
   <label><?= htmlspecialchars($L['label_plan']) ?>
     <select name="plan">

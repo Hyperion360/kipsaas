@@ -42,6 +42,13 @@ final class Registry
             created_at TEXT NOT NULL DEFAULT (strftime(\'%Y-%m-%dT%H:%M:%fZ\', \'now\')),
             updated_at TEXT NOT NULL DEFAULT (strftime(\'%Y-%m-%dT%H:%M:%fZ\', \'now\'))
         )');
+        // The pen name the owner gave at signup. CREATE IF NOT EXISTS cannot
+        // evolve a live registry, so older databases gain it here, before any
+        // insert; '' means the owner was never asked.
+        $tcols = $this->pdo->query('PRAGMA table_info(tenants)')->fetchAll(\PDO::FETCH_COLUMN, 1);
+        if (!in_array('owner_name', $tcols, true)) {
+            $this->pdo->exec("ALTER TABLE tenants ADD COLUMN owner_name TEXT NOT NULL DEFAULT ''");
+        }
         $this->pdo->exec('CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             stripe_event_id TEXT NOT NULL UNIQUE,

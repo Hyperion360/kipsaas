@@ -15,7 +15,7 @@ final class Signup
     public function __construct(private Tenants $tenants, private array $config, private \Closure $mail) {}
 
     /** @return array{status: string, slug?: string, error?: string} */
-    public function submit(string $email, string $rawTitle, string $plan, string $ip): array
+    public function submit(string $email, string $rawTitle, string $plan, string $ip, string $ownerName = ''): array
     {
         $email = strtolower(trim($email));
         // The IP bucket is first and unconditional: pure abuse control, hit
@@ -33,6 +33,10 @@ final class Signup
         } catch (\DomainException $e) {
             return ['status' => 'error', 'error' => $e->getMessage()];
         }
+        $ownerName = trim($ownerName);
+        if ($ownerName !== '' && ($why = self::ownerNameError($ownerName)) !== null) {
+            return ['status' => 'error', 'error' => $why];
+        }
         // A plan with no price id is a manual-only tier: the form never
         // offers it, so a value naming one is as wrong as an unknown key.
         if (!isset($this->config['plans'][$plan]['price_id']) || $this->config['plans'][$plan]['price_id'] === '') {
@@ -48,11 +52,38 @@ final class Signup
         if ($title === '') $title = $slug;
         $token = Tokens::issue($this->config['token_secret']);
         $host = Slug::hostFor($slug, $this->config['base_domain']);
-        $this->tenants->create($slug, $host, $plan, $email, $title, $token['hash'], $token['expires_at']);
+        $this->tenants->create($slug, $host, $plan, $email, $title, $token['hash'], $token['expires_at'], $ownerName);
         $link = $this->config['control_base_url'] . '/verify?t=' . urlencode($token['token']);
         ($this->mail)($email, 'Confirm your signup: ' . $title,
             "Confirm your email to create {$title} at {$host}:\n\n{$link}\n\nThe link expires in 24 hours.\n");
         return ['status' => 'pending', 'slug' => $slug];
+    }
+
+    /**
+     * The owner's pen name: the same characters a Kiption archive accepts for
+     * a pen name. Null when usable, else the message to show. A blank name is
+     * the caller's business (older callers never asked).
+     */
+    public static function ownerNameError(string $name): ?string
+    {
+        $bad = "Use 2 to 40 letters, numbers, spaces, or . ' - _";
+        if (class_exists(\Normalizer::class)) {
+            $name = \Normalizer::normalize($name, \Normalizer::FORM_C) ?: $name;
+        }
+        $len = preg_match('/^[\p{L}\p{M}\p{Nd} .\'_-]+$/u', $name) === 1 ? mb_strlen($name) : 0;
+        if ($len < 2 || $len > 40
+            || $name !== trim($name) || str_contains($name, '  ')
+            || preg_match('/\p{M}{3,}/u', $name) !== 0) {
+            return $bad;
+        }
+        if (preg_match('/\p{Latin}/u', $name) === 1 && preg_match('/[\p{Cyrillic}\p{Greek}]/u', $name) === 1) {
+            return 'Use letters from one alphabet.';
+        }
+        $key = mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $name)));
+        if (in_array($key, ['admin', 'administrator', 'owner', 'moderator', 'staff', 'support', 'kiption'], true)) {
+            return 'Pick a different name; that one is reserved.';
+        }
+        return null;
     }
 
     /** @return array{status: 'verified'|'already_claimed'|'error', tenant?: array, error?: string} */

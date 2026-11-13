@@ -116,4 +116,28 @@ final class SaasRegistryTest extends TestCase
             self::assertStringNotContainsString('temp b-tree', $plan, "{$label} must not sort through a temp b-tree");
         }
     }
+
+    public function test_a_registry_with_the_old_schema_gains_owner_name_on_open(): void
+    {
+        $file = sys_get_temp_dir() . '/registry-old-' . bin2hex(random_bytes(4)) . '.sqlite';
+        $old = new \PDO('sqlite:' . $file);
+        $old->exec("CREATE TABLE tenants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE, host TEXT NOT NULL UNIQUE,
+            plan TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', owner_email TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending', verify_token_hash TEXT, verify_expires_at TEXT,
+            stripe_customer_id TEXT, stripe_subscription_id TEXT, grace_until TEXT, purge_after TEXT,
+            created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '')");
+        $old->exec("INSERT INTO tenants (slug, host, plan, owner_email) VALUES ('old', 'old.saas.example.test', 'standard', 'o@example.test')");
+        $old = null;
+        $tenants = new Tenants((new Registry('sqlite:' . $file))->pdo());
+        self::assertSame('', $tenants->bySlug('old')['owner_name']);
+        $id = $tenants->create('new', 'new.saas.example.test', 'standard', 'n@example.test', 'New', 'h', '2026-01-01T00:00:00Z', 'Clark Kent');
+        self::assertSame('Clark Kent', $tenants->byId($id)['owner_name']);
+    }
+
+    public function test_create_without_an_owner_name_stores_empty(): void
+    {
+        $id = $this->tenant();
+        self::assertSame('', $this->tenants->byId($id)['owner_name']);
+    }
 }

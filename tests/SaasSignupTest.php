@@ -134,4 +134,49 @@ final class SaasSignupTest extends TestCase
         $this->tenants->update((int) $t['id'], ['verify_token_hash' => $tok['hash'], 'verify_expires_at' => $tok['expires_at']]);
         return $tok['token'];
     }
+
+    /** @return list<array{string}> */
+    public static function goodOwnerNames(): array
+    {
+        return [['Scribble'], ['Clark Kent'], ['lois_lane-2'], ['abc'], ['Jo'], ["Chlo\u{e9}"], ['J.R.'], ["O'Brien"], [str_repeat('a', 40)]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('goodOwnerNames')]
+    public function test_submit_stores_an_accepted_owner_name(string $name): void
+    {
+        $out = $this->signup()->submit('ow@example.test', 'acme', 'standard', '1.2.3.4', $name);
+        self::assertSame('pending', $out['status'], $name);
+        self::assertSame($name, $this->tenants->bySlug('acme')['owner_name']);
+    }
+
+    /** @return list<array{string}> */
+    public static function badOwnerNames(): array
+    {
+        return [['a'], [str_repeat('a', 41)], ['<b>'], ['two  spaces'], ["Cl\xFFark"],
+            ["\u{0405}cribble"], ["a\u{0301}\u{0302}\u{0303}b"], ['Admin'], ['  OWNER '], ['kiption'], ['Mod  erator'], ['Support']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('badOwnerNames')]
+    public function test_submit_refuses_a_bad_owner_name(string $name): void
+    {
+        $out = $this->signup()->submit('ow@example.test', 'acme', 'standard', '1.2.3.4', $name);
+        self::assertSame('error', $out['status'], $name);
+        self::assertNull($this->tenants->bySlug('acme'));
+        self::assertSame([], $this->mails);
+    }
+
+    public function test_owner_name_is_trimmed_and_optional_for_old_callers(): void
+    {
+        $s = $this->signup();
+        $s->submit('ow@example.test', 'acme', 'standard', '1.2.3.4', '  Clark Kent ');
+        self::assertSame('Clark Kent', $this->tenants->bySlug('acme')['owner_name']);
+        self::assertSame('pending', $s->submit('ow2@example.test', 'beta', 'standard', '1.2.3.4')['status']);
+        self::assertSame('', $this->tenants->bySlug('beta')['owner_name']);
+    }
+
+    public function test_error_text_names_what_is_allowed(): void
+    {
+        $out = $this->signup()->submit('ow@example.test', 'acme', 'standard', '1.2.3.4', 'a');
+        self::assertSame("Use 2 to 40 letters, numbers, spaces, or . ' - _", $out['error']);
+    }
 }
