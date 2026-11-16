@@ -76,11 +76,28 @@ final class WebhookHandler
     private function routeChange(\Closure $change): void
     {
         $calls = 0;
-        $once = static function () use (&$calls, $change): void {
+        $active = true;
+        $actionError = null;
+        $once = static function () use (&$calls, &$active, &$actionError, $change): void {
+            if (!$active) throw new \LogicException('routing change called after wrapper returned');
             if (++$calls !== 1) throw new \LogicException('routing change called twice');
-            $change();
+            try {
+                $change();
+            } catch (\Throwable $e) {
+                $actionError = $e;
+                throw $e;
+            }
         };
-        ($this->routingChange)($once);
+        $wrapperError = null;
+        try {
+            ($this->routingChange)($once);
+        } catch (\Throwable $e) {
+            $wrapperError = $e;
+        } finally {
+            $active = false;
+        }
+        if ($actionError !== null) throw $actionError;
+        if ($wrapperError !== null) throw $wrapperError;
         if ($calls !== 1) throw new \LogicException('routing change was not called');
     }
 
