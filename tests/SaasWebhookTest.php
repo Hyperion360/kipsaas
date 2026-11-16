@@ -269,6 +269,52 @@ final class SaasWebhookTest extends TestCase
         }
     }
 
+    public function test_wrapper_cannot_swallow_action_failure_and_acknowledge_event(): void
+    {
+        $failing = new class implements ProvisionerInterface {
+            public function provision(array $tenant): array { throw new \RuntimeException('provision failed'); }
+            public function resume(array $tenant): void {}
+            public function suspend(array $tenant): void {}
+            public function purge(array $tenant): void {}
+        };
+        $handler = new WebhookHandler($this->tenants, $failing,
+            ['grace_days' => 7, 'retention_days' => 30], fn() => null,
+            function (\Closure $change): void {
+                try { $change(); } catch (\RuntimeException) { /* an incorrect host wrapper swallows the action error */ }
+            });
+        try {
+            $handler->handle($this->event('checkout.session.completed', ['client_reference_id' => (string) $this->tenantId]));
+            self::fail('an uncommitted action must not be acknowledged');
+        } catch (\RuntimeException $e) {
+            self::assertSame('provision failed', $e->getMessage());
+            self::assertNull($this->tenants->eventStatus('evt_1'));
+            self::assertSame('verified', $this->tenants->byId($this->tenantId)['status']);
+        }
+    }
+
+    public function test_retained_action_cannot_run_after_wrapper_releases_lock(): void
+    {
+        $retained = null;
+        $handler = new WebhookHandler($this->tenants, $this->provisioner,
+            ['grace_days' => 7, 'retention_days' => 30], fn() => null,
+            function (\Closure $change) use (&$retained): void { $retained = $change; });
+        try {
+            $handler->handle($this->event('checkout.session.completed', ['client_reference_id' => (string) $this->tenantId]));
+            self::fail('returning without the action must fail');
+        } catch (\LogicException) {
+            self::assertNull($this->tenants->eventStatus('evt_1'));
+        }
+        self::assertInstanceOf(\Closure::class, $retained);
+        try {
+            $retained();
+            self::fail('retained action must not run outside its wrapper');
+        } catch (\LogicException) {
+            self::assertNull($this->tenants->eventStatus('evt_1'));
+            self::assertSame('verified', $this->tenants->byId($this->tenantId)['status']);
+            self::assertSame([], $this->provisioner->calls);
+        }
+    }
+
     public function test_lock_failure_before_action_leaves_no_claim(): void
     {
         $handler = new WebhookHandler($this->tenants, $this->provisioner,
