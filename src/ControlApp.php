@@ -114,13 +114,27 @@ final class ControlApp
                 }
                 $provisioner = new ReferenceProvisioner($config, $mail, $app);
             }
-            return new WebhookHandler($tenants, $provisioner, $config, function () use ($tenants, $config): void {
+            $publisher = function () use ($tenants, $config): void {
                 try {
                     (new MapGen($tenants, ['tenants_root' => $config['tenants_root']] + $config['nginx']))->publish();
                 } catch (\Throwable $e) {
                     error_log('saas: map publish failed: ' . $e->getMessage()); // cron map:write converges
                 }
-            });
+            };
+            if (array_key_exists('map_publisher', $config)) {
+                if (!$config['map_publisher'] instanceof \Closure) {
+                    throw new \InvalidArgumentException('config map_publisher must be a Closure');
+                }
+                $publisher = $config['map_publisher'];
+            }
+            $routingChange = null;
+            if (array_key_exists('routing_change', $config)) {
+                if (!$config['routing_change'] instanceof \Closure) {
+                    throw new \InvalidArgumentException('config routing_change must be a Closure');
+                }
+                $routingChange = $config['routing_change'];
+            }
+            return new WebhookHandler($tenants, $provisioner, $config, $publisher, $routingChange);
         };
 
         try {

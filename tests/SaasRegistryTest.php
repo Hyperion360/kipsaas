@@ -57,6 +57,65 @@ final class SaasRegistryTest extends TestCase
         self::assertTrue($this->tenants->claimEvent('evt_1', 'checkout.session.completed', $id, '{}')); // retry after failure
     }
 
+    public function test_event_finalization_commits_status_fields_and_event_together(): void
+    {
+        $id = $this->tenant();
+        $this->tenants->setStatus($id, 'verified');
+        $this->tenants->claimEvent('evt_tx', 'checkout.session.completed', $id, '{}');
+        $pdo = $this->tenants->pdo();
+        $pdo->exec('CREATE TABLE route_revision (revision INTEGER NOT NULL)');
+        $pdo->exec('INSERT INTO route_revision VALUES (0)');
+        $pdo->exec("CREATE TRIGGER route_status AFTER UPDATE OF status ON tenants BEGIN UPDATE route_revision SET revision = revision + 1; END");
+        $pdo->exec("CREATE TRIGGER refuse_event_done BEFORE UPDATE OF status ON events WHEN NEW.stripe_event_id = 'evt_tx' BEGIN SELECT RAISE(ABORT, 'test interruption'); END");
+        try {
+            $this->tenants->finalizeEventTransition('evt_tx', $id, 'active', [],
+                ['stripe_customer_id' => 'cus_1', 'stripe_subscription_id' => 'sub_1']);
+            self::fail('event update must interrupt the transaction');
+        } catch (\PDOException) {
+            self::assertSame('verified', $this->tenants->byId($id)['status']);
+            self::assertNull($this->tenants->byId($id)['stripe_customer_id']);
+            self::assertSame('pending', $this->tenants->eventStatus('evt_tx'));
+            self::assertSame(0, (int) $pdo->query('SELECT revision FROM route_revision')->fetchColumn());
+        }
+        $pdo->exec('DROP TRIGGER refuse_event_done');
+        $this->tenants->finalizeEventTransition('evt_tx', $id, 'active', [],
+            ['stripe_customer_id' => 'cus_1', 'stripe_subscription_id' => 'sub_1']);
+        self::assertSame('active', $this->tenants->byId($id)['status']);
+        self::assertSame('cus_1', $this->tenants->byId($id)['stripe_customer_id']);
+        self::assertSame('done', $this->tenants->eventStatus('evt_tx'));
+        self::assertSame(1, (int) $pdo->query('SELECT revision FROM route_revision')->fetchColumn());
+    }
+
+    public function test_suspended_renewal_clears_both_markers_atomically(): void
+    {
+        $id = $this->tenant();
+        $this->tenants->setStatus($id, 'verified');
+        $this->tenants->setStatus($id, 'active');
+        $this->tenants->setStatus($id, 'past_due', ['grace_until' => '2099-01-01T00:00:00Z']);
+        $this->tenants->setStatus($id, 'suspended', ['purge_after' => '2099-02-01T00:00:00Z']);
+        $this->tenants->claimEvent('evt_resume', 'invoice.paid', $id, '{}');
+        $this->tenants->pdo()->exec("CREATE TRIGGER refuse_resume BEFORE UPDATE OF status ON events WHEN NEW.stripe_event_id = 'evt_resume' BEGIN SELECT RAISE(ABORT, 'test interruption'); END");
+        try {
+            $this->tenants->finalizeEventTransition('evt_resume', $id, 'active',
+                ['purge_after' => null, 'grace_until' => null]);
+            self::fail('event update must interrupt the transaction');
+        } catch (\PDOException) {
+            $row = $this->tenants->byId($id);
+            self::assertSame('suspended', $row['status']);
+            self::assertSame('2099-02-01T00:00:00Z', $row['purge_after']);
+            self::assertSame('2099-01-01T00:00:00Z', $row['grace_until']);
+            self::assertSame('pending', $this->tenants->eventStatus('evt_resume'));
+        }
+        $this->tenants->pdo()->exec('DROP TRIGGER refuse_resume');
+        $this->tenants->finalizeEventTransition('evt_resume', $id, 'active',
+            ['purge_after' => null, 'grace_until' => null]);
+        $row = $this->tenants->byId($id);
+        self::assertSame('active', $row['status']);
+        self::assertNull($row['purge_after']);
+        self::assertNull($row['grace_until']);
+        self::assertSame('done', $this->tenants->eventStatus('evt_resume'));
+    }
+
     public function test_host_maps_and_status_lists(): void
     {
         $id = $this->tenant();
