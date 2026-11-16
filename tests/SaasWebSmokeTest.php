@@ -540,6 +540,42 @@ PHP);
         }
     }
 
+    public function test_injected_webhook_publisher_bypasses_default_map(): void
+    {
+        $this->writeConfig($this->dir,
+            "    'map_publisher' => function (): void { file_put_contents(__DIR__ . '/publisher.log', 'publish\\n', FILE_APPEND); },\n"
+            . "    'routing_change' => function (\\Closure \$change): void { file_put_contents(__DIR__ . '/routing.log', 'enter\\n', FILE_APPEND); \$change(); file_put_contents(__DIR__ . '/routing.log', 'leave\\n', FILE_APPEND); },\n");
+        $pdo = (new \PDO('sqlite:' . $this->dir . '/data/registry.sqlite'));
+        $id = (string) $pdo->query("SELECT id FROM tenants WHERE slug = 'acme'")->fetchColumn();
+        $event = ['id' => 'evt_custom_map', 'type' => 'checkout.session.completed',
+            'data' => ['object' => ['client_reference_id' => $id]]];
+        $raw = json_encode($event, JSON_THROW_ON_ERROR);
+        $time = (string) time();
+        $sig = "t={$time},v1=" . hash_hmac('sha256', "{$time}.{$raw}", self::WHSEC);
+        [$status, $body, $headers] = $this->http(8097, 'POST', '/webhooks/stripe', [],
+            ['Content-Type: application/json', 'Stripe-Signature: ' . $sig], $raw);
+        self::assertSame(200, $status);
+        self::assertSame('ok', $body);
+        self::assertSame('publish\\n', file_get_contents($this->dir . '/publisher.log'));
+        self::assertSame('enter\\nleave\\n', file_get_contents($this->dir . '/routing.log'));
+        self::assertFileDoesNotExist($this->dir . '/tenants.map');
+        foreach ($headers as $header) self::assertDoesNotMatchRegularExpression('/^set-cookie:/i', $header);
+    }
+
+    public function test_invalid_webhook_callback_does_not_break_start_page(): void
+    {
+        $this->writeConfig($this->dir, "    'map_publisher' => 'invalid',\n");
+        [$status] = $this->http(8097, 'GET', '/start');
+        self::assertSame(200, $status);
+        $time = (string) time();
+        $raw = json_encode(['id' => 'evt_bad_config', 'type' => 'checkout.session.completed',
+            'data' => ['object' => ['client_reference_id' => '1']]], JSON_THROW_ON_ERROR);
+        $sig = "t={$time},v1=" . hash_hmac('sha256', "{$time}.{$raw}", self::WHSEC);
+        [$status] = $this->http(8097, 'POST', '/webhooks/stripe', [],
+            ['Content-Type: application/json', 'Stripe-Signature: ' . $sig], $raw);
+        self::assertSame(500, $status);
+    }
+
     public function test_session_cookie_carries_secure_when_the_control_url_is_https(): void
     {
         // nginx's stock fastcgi_params never passes HTTPS, and a spoofable

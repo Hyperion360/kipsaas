@@ -200,6 +200,39 @@ final class Tenants
         return $row === false ? null : (string) $row['status'];
     }
 
+    /** The stored identity for an interrupted claim, checked while the host owns its routing lock. */
+    public function eventClaim(string $eventId): ?array
+    {
+        $q = $this->pdo->prepare('SELECT type, tenant_id, payload_json, status FROM events WHERE stripe_event_id = ?');
+        $q->execute([$eventId]);
+        $row = $q->fetch(\PDO::FETCH_ASSOC);
+        return $row === false ? null : $row;
+    }
+
+    /** Commit the tenant transition and event acknowledgement in one SQLite transaction. */
+    public function finalizeEventTransition(string $eventId, ?int $tenantId, ?string $to = null,
+        array $statusExtra = [], array $otherFields = []): void
+    {
+        $this->pdo->exec('BEGIN IMMEDIATE');
+        try {
+            if ($to !== null) {
+                if ($tenantId === null) throw new \InvalidArgumentException('tenant required for status transition');
+                $this->setStatus($tenantId, $to, $statusExtra);
+            }
+            if ($otherFields !== []) {
+                if ($tenantId === null) throw new \InvalidArgumentException('tenant required for field update');
+                $this->update($tenantId, $otherFields);
+            }
+            $q = $this->pdo->prepare("UPDATE events SET status = 'done' WHERE stripe_event_id = ? AND status = 'pending'");
+            $q->execute([$eventId]);
+            if ($q->rowCount() !== 1) throw new \RuntimeException('pending event claim missing');
+            $this->pdo->exec('COMMIT');
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->exec('ROLLBACK');
+            throw $e;
+        }
+    }
+
     public function completeEvent(string $eventId): void
     {
         $this->pdo->prepare("UPDATE events SET status = 'done' WHERE stripe_event_id = ?")->execute([$eventId]);
