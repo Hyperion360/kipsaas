@@ -228,7 +228,10 @@ final class Tenants
             if ($q->rowCount() !== 1) throw new \RuntimeException('pending event claim missing');
             $this->pdo->exec('COMMIT');
         } catch (\Throwable $e) {
-            if ($this->pdo->inTransaction()) $this->pdo->exec('ROLLBACK');
+            // BEGIN IMMEDIATE was issued as SQL, so PDO::inTransaction() is
+            // not reliable across PHP/SQLite versions. The transaction was
+            // opened above and must be rolled back on every failed step.
+            $this->pdo->exec('ROLLBACK');
             throw $e;
         }
     }

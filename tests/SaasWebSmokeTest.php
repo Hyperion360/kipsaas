@@ -137,7 +137,9 @@ PHP);
     private function bootServer(int $port, string $configPath): void
     {
         $pub = dirname(__DIR__) . '/public';
-        $cmd = escapeshellarg(PHP_BINARY) . ' -S 127.0.0.1:' . $port . ' -t ' . escapeshellarg($pub) . ' ' . escapeshellarg($pub . '/index.php');
+        // An argv command gives proc_terminate() the server PID. A shell
+        // command can leave its PHP child listening after the fixture is gone.
+        $cmd = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', $pub, $pub . '/index.php'];
         $env = array_merge(array_filter(getenv(), 'is_string'), ['SAAS_CONFIG' => $configPath]);
         $proc = proc_open($cmd, [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, $pub, $env);
         for ($i = 0; $i < 100; $i++) {
