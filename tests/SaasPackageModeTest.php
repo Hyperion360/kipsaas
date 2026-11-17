@@ -88,7 +88,7 @@ PHP);
     private function bootAppServer(int $port): void
     {
         $pub = $this->app . '/public';
-        $cmd = escapeshellarg(PHP_BINARY) . ' -S 127.0.0.1:' . $port . ' -t ' . escapeshellarg($pub) . ' ' . escapeshellarg($pub . '/index.php');
+        $cmd = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', $pub, $pub . '/index.php'];
         $env = array_filter(getenv(), 'is_string');
         unset($env['SAAS_CONFIG']); // package mode: config must resolve at the app root, not through the env door
         $proc = proc_open($cmd, [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, $pub, $env);

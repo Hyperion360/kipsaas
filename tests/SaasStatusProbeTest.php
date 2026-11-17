@@ -57,8 +57,7 @@ final class SaasStatusProbeTest extends TestCase
         ];
         file_put_contents($this->dir . '/config.php', "<?php\nreturn " . var_export($config, true) . ";\n");
 
-        $cmd = escapeshellarg(PHP_BINARY) . ' -S 127.0.0.1:' . self::UP_PORT . ' -t '
-            . escapeshellarg($this->dir . '/docroot');
+        $cmd = [PHP_BINARY, '-S', '127.0.0.1:' . self::UP_PORT, '-t', $this->dir . '/docroot'];
         $proc = proc_open($cmd, [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
         $this->procs[] = $proc;
         $up1 = false;
@@ -204,8 +203,7 @@ final class SaasStatusProbeTest extends TestCase
         // exactly once: no interleaved lines, no lost run.
         $fp = fopen($this->dir . '/status.jsonl', 'c+');
         flock($fp, LOCK_EX);
-        $cmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__) . '/bin/status-probe')
-            . ' ' . escapeshellarg($this->dir . '/config.php');
+        $cmd = [PHP_BINARY, dirname(__DIR__) . '/bin/status-probe', $this->dir . '/config.php'];
         $proc = proc_open($cmd, [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes);
         usleep(400000); // the probe finishes its network pass and parks on the lock
         $status = proc_get_status($proc);
